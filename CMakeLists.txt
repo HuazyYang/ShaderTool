@@ -61,4 +61,10 @@ if(SHADERTOOL_BUILD_TESTING)
             "-DFAKE_COMPILER=$<TARGET_FILE:ShaderToolFakeCompiler>"
             "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/parser"
             -P "${CMAKE_CURRENT_LIST_DIR}/tests/Parser.cmake")
+    add_test(NAME ShaderToolFindPackage
+        COMMAND "${CMAKE_COMMAND}" --fresh
+            -G "${CMAKE_GENERATOR}"
+            "-DSHADER_TOOL_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -S "${CMAKE_CURRENT_LIST_DIR}/tests/FindPackageConsumer"
+            -B "${CMAKE_CURRENT_BINARY_DIR}/find-package-consumer")
 endif()
