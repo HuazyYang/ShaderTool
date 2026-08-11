@@ -212,7 +212,7 @@ function(_shadertool_generate_shader_objects output_variable source_variable hea
         endif()
         list(APPEND command_line -depfile "${dep_path}" "${entry_file_path}")
 
-        if(WINDOWS_WINE_CROSS)
+        if(ShaderTool_WINDOWS_WINE_CROSS)
             set(wine_command_line)
             foreach(argument IN LISTS command_line)
                 if(argument MATCHES "^/")
