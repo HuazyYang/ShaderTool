@@ -62,12 +62,12 @@ typedef struct DependsParserContext {
 #pragma region[ Args ]
 
 void ArgsDeinit(Args *args) {
-    DynamicArrayDeinitTyped(&args->CompilerOptions);
+    DYNAMIC_ARRAY_DEINIT_TYPED(&args->CompilerOptions);
     memset(args, 0, sizeof(*args));
 }
 
 int ArgsAppendCompilerOption(Args *args, const ParsedOption *option) {
-    return DynamicArrayAppendTyped(&args->CompilerOptions, ParsedOption, option, 1,
+    return DYNAMIC_ARRAY_APPEND_TYPED(&args->CompilerOptions, ParsedOption, option, 1,
                                 "compiler option storage");
 }
 
@@ -96,7 +96,7 @@ int DependsParserAppendDependList(DependsParserContext *ctx, const AStringView *
 
     if (NormalizeAPath(depend, &depend_path_buffer))
         goto final_cleanup;
-    AStringViewInit2(&depend2, depend_path_buffer.Buffer, depend_path_buffer.Length);
+    depend2 = AStringViewFromBuffer(depend_path_buffer.Buffer, depend_path_buffer.Length);
 
     for (; start != end;) {
         if (AStringViewEqual(&depend2, start))
@@ -124,8 +124,8 @@ int DependsParserInit(DependsParserContext *ctx, const Args *args) {
     ctx->Backend = args->Backend;
 
     if (ctx->Enabled) {
-        AStringViewInit2(&path_view, args->OutputFilePath.Buffer,
-                         args->OutputFilePath.Length);
+        path_view = AStringViewFromBuffer(args->OutputFilePath.Buffer,
+                                          args->OutputFilePath.Length);
         if (NormalizeAPath(&path_view, &ctx->Target))
             return -1;
 
@@ -141,10 +141,10 @@ int DependsParserInput(DependsParserContext *ctx, const AStringView *content,
     // Opening file [*], stack top [1]
     // Current working dir [*]
     // Resolved to [*]
-    const AStringView FirstLinePrefix = AStringViewCreate("Opening file [");
-    const AStringView SecondLinePrefix = AStringViewCreate("Current working dir [");
-    const AStringView ThirdLinePrefix = AStringViewCreate("Resolved to [");
-    const AStringView DxcLinePrefix = AStringViewCreate("; Opening file [");
+    const AStringView FirstLinePrefix = A_STRING_VIEW_LITERAL("Opening file [");
+    const AStringView SecondLinePrefix = A_STRING_VIEW_LITERAL("Current working dir [");
+    const AStringView ThirdLinePrefix = A_STRING_VIEW_LITERAL("Resolved to [");
+    const AStringView DxcLinePrefix = A_STRING_VIEW_LITERAL("; Opening file [");
 
     const char *start, *next, *last, *end;
     AStringView curr;
@@ -171,14 +171,14 @@ int DependsParserInput(DependsParserContext *ctx, const AStringView *content,
         }
 
         while (start != end) {
-            AStringViewInit2(&curr, start, end - start);
+            curr = AStringViewFromBuffer(start, end - start);
 
             if (ctx->Backend != BackendFxc &&
                 AStringViewEqualAtLeast(&curr, &DxcLinePrefix)) {
                 start += DxcLinePrefix.Length;
                 for (next = start; next != end && *next != ']'; ++next)
                     ;
-                AStringViewInit2(&curr, start, next - start);
+                curr = AStringViewFromBuffer(start, next - start);
                 if (DependsParserAppendDependList(ctx, &curr))
                     goto relax_cleanup;
                 start = ReadNextLine(next, end);
@@ -192,7 +192,7 @@ int DependsParserInput(DependsParserContext *ctx, const AStringView *content,
             } else {
                 next = ReadNextLine(start, end);
                 if (next != start && !ctx->StdoutOnly)
-                    LogI("%.*s", (int)(next - start), start);
+                    LOG_I("%.*s", (int)(next - start), start);
                 start = next;
                 ++ctx->LineIndex;
                 continue;
@@ -203,7 +203,7 @@ int DependsParserInput(DependsParserContext *ctx, const AStringView *content,
             ++ctx->LineIndex;
 
             while (start != end) {
-                AStringViewInit2(&curr, start, end - start);
+                curr = AStringViewFromBuffer(start, end - start);
                 if (AStringViewEqualAtLeast(&curr, &SecondLinePrefix)) {
                     start += SecondLinePrefix.Length;
                     ctx->SessionState = 2;
@@ -213,7 +213,7 @@ int DependsParserInput(DependsParserContext *ctx, const AStringView *content,
                     ++ctx->LineIndex;
                 } else {
                     if (ctx->SessionState != 1 && ctx->SessionState != 2) {
-                        LogW(
+                        LOG_W(
                             "Read inline stack log line (%zu) mismatched, must start with "
                             "'%s':\n%.*s\n",
                             ctx->LineIndex, SecondLinePrefix.Buffer, (int)curr.Length,
@@ -225,12 +225,12 @@ int DependsParserInput(DependsParserContext *ctx, const AStringView *content,
             }
 
             if (start != end) {
-                AStringViewInit2(&curr, start, end - start);
+                curr = AStringViewFromBuffer(start, end - start);
                 if (AStringViewEqualAtLeast(&curr, &ThirdLinePrefix)) {
                     start += ThirdLinePrefix.Length;
                     ctx->SessionState = 0;
                 } else {
-                    LogE(
+                    LOG_E(
                         "Read inline stack log line (%zu) mismatched, must start with "
                         "'%s':\n%.*s\n'",
                         ctx->LineIndex, ThirdLinePrefix.Buffer, (int)curr.Length,
@@ -242,7 +242,7 @@ int DependsParserInput(DependsParserContext *ctx, const AStringView *content,
             for (next = start; next != end && *next != ']'; ++next)
                 ;
 
-            AStringViewInit2(&curr, start, next - start);
+            curr = AStringViewFromBuffer(start, next - start);
 
             if (DependsParserAppendDependList(ctx, &curr))
                 goto relax_cleanup;
@@ -259,7 +259,7 @@ int DependsParserInput(DependsParserContext *ctx, const AStringView *content,
         goto final_cleanup;
     } else {
         if (!ctx->StdoutOnly)
-            LogI("%.*s", (int)content->Length, content->Buffer);
+            LOG_I("%.*s", (int)content->Length, content->Buffer);
         ret = 0;
     }
 
@@ -276,9 +276,9 @@ void DependsParserDeinit(DependsParserContext *ctx) {
 #pragma endregion[DependsParser]
 
 int WriteDepfile(const Args *args, const DependsParserContext *dep_ctx) {
-    const AStringView target_postfix = AStringViewCreate(":");
-    const AStringView depend_prefix = AStringViewCreate(" ");
-    const AStringView line_end = AStringViewCreate("\n");
+    const AStringView target_postfix = A_STRING_VIEW_LITERAL(":");
+    const AStringView depend_prefix = A_STRING_VIEW_LITERAL(" ");
+    const AStringView line_end = A_STRING_VIEW_LITERAL("\n");
     ByteBuffer content = {0};
     AString depfile_path = {0};
     AStringView view;
@@ -288,13 +288,13 @@ int WriteDepfile(const Args *args, const DependsParserContext *dep_ctx) {
 
     if (!ArgsHasDepfile(args))
         return 0;
-    AStringViewInit2(&view, dep_ctx->Target.Buffer, dep_ctx->Target.Length);
+    view = AStringViewFromBuffer(dep_ctx->Target.Buffer, dep_ctx->Target.Length);
     if (ByteBufferCatAStringViews(&content, 2, &view, &target_postfix))
         goto cleanup;
     start = dep_ctx->DependList.Buffer;
     end = start + dep_ctx->DependList.Size;
     while (start != end) {
-        AStringViewInit(&view, start);
+        view = AStringViewFromCString(start);
         if (ByteBufferCatAStringViews(&content, 2, &depend_prefix, &view))
             goto cleanup;
         start += view.Length + 1;
@@ -311,7 +311,7 @@ int WriteDepfile(const Args *args, const DependsParserContext *dep_ctx) {
                                              content.Size, &changed))
             goto cleanup;
         if (changed)
-            LogI("depfile save succeeded; see %s\n", depfile_path.Buffer);
+            LOG_I("depfile save succeeded; see %s\n", depfile_path.Buffer);
     }
     ret = 0;
 cleanup:
@@ -338,172 +338,172 @@ typedef struct BackendSpec {
     const char *Description;
 } BackendSpec;
 
-#define OptionGroupMask UINT32_C(0x000000FF)
-#define OptionBackendMaskValue UINT32_C(0x0000FF00)
-#define OptionReservedMask UINT32_C(0xFFFF0000)
-#define OptionClass(group, backends) ((uint32_t)(group) | ((uint32_t)(backends) << 8))
-#define Group(backends, description) \
-    {OptionClass(OptionClassGroup, backends), NULL, 0, NULL, description}
-#define OptionForBackends(backends, name, values, value_name, description) \
-    {OptionClass(0, backends), name, values, value_name, description}
-#define Option(name, values, value_name, description) \
+#define OPTION_GROUP_MASK UINT32_C(0x000000FF)
+#define OPTION_BACKEND_MASK_VALUE UINT32_C(0x0000FF00)
+#define OPTION_RESERVED_MASK UINT32_C(0xFFFF0000)
+#define OPTION_CLASS(group, backends) ((uint32_t)(group) | ((uint32_t)(backends) << 8))
+#define GROUP(backends, description) \
+    {OPTION_CLASS(OptionClassGroup, backends), NULL, 0, NULL, description}
+#define OPTION_FOR_BACKENDS(backends, name, values, value_name, description) \
+    {OPTION_CLASS(0, backends), name, values, value_name, description}
+#define OPTION(name, values, value_name, description) \
     {UINT32_C(0) | UINT32_C(0x0000FF00), name, values, value_name, description}
 
 static const OptionSpec OptionSpecs[] = {
-    Group(BackendFxc | BackendDxc | BackendSpirv, "ShaderTool control"),
-    Option("-compiler", 1, "PATH", "compiler executable"),
-    Option("-depfile", 1, "PATH|-", "write canonical dependencies"),
-    Option("-h", 0, NULL, "show this help"),
-    Option("--help", 0, NULL, "show this help"),
-    Option("-spirv", 0, NULL, "reserved; select SPIR-V with the spirv subcommand"),
+    GROUP(BackendFxc | BackendDxc | BackendSpirv, "ShaderTool control"),
+    OPTION("-compiler", 1, "PATH", "compiler executable"),
+    OPTION("-depfile", 1, "PATH|-", "write canonical dependencies"),
+    OPTION("-h", 0, NULL, "show this help"),
+    OPTION("--help", 0, NULL, "show this help"),
+    OPTION("-spirv", 0, NULL, "reserved; select SPIR-V with the spirv subcommand"),
 
-    Group(BackendFxc | BackendDxc | BackendSpirv, "Ignored compiler dependency options"),
-    Option("-M", 0, NULL, "ignored compiler dependency generation option"),
-    Option("-MD", 0, NULL, "ignored compiler dependency generation option"),
-    Option("-MF", 1, "PATH", "ignored compiler depfile option"),
-    Option("-Vi", 0, NULL, "ignored compiler include-trace option"),
+    GROUP(BackendFxc | BackendDxc | BackendSpirv, "Ignored compiler dependency options"),
+    OPTION("-M", 0, NULL, "ignored compiler dependency generation option"),
+    OPTION("-MD", 0, NULL, "ignored compiler dependency generation option"),
+    OPTION("-MF", 1, "PATH", "ignored compiler depfile option"),
+    OPTION("-Vi", 0, NULL, "ignored compiler include-trace option"),
 
-    Group(BackendFxc | BackendDxc | BackendSpirv, "Preprocessor and include paths"),
-    Option("-D", 1, "NAME[=VALUE]", "define a macro"),
-    Option("-I", 1, "DIRECTORY", "add an include directory"),
-    Group(BackendDxc | BackendSpirv, "DXC preprocessor behavior"),
-    Option("-encoding", 1, "ENCODING", "select source encoding"),
-    Option("-flegacy-macro-expansion", 0, NULL, "use legacy macro expansion"),
-    Option("-ignore-line-directives", 0, NULL, "ignore line directives"),
+    GROUP(BackendFxc | BackendDxc | BackendSpirv, "Preprocessor and include paths"),
+    OPTION("-D", 1, "NAME[=VALUE]", "define a macro"),
+    OPTION("-I", 1, "DIRECTORY", "add an include directory"),
+    GROUP(BackendDxc | BackendSpirv, "DXC preprocessor behavior"),
+    OPTION("-encoding", 1, "ENCODING", "select source encoding"),
+    OPTION("-flegacy-macro-expansion", 0, NULL, "use legacy macro expansion"),
+    OPTION("-ignore-line-directives", 0, NULL, "ignore line directives"),
 
-    Group(BackendFxc | BackendDxc | BackendSpirv, "Entry point and shader profile"),
-    Option("-E", 1, "ENTRY", "select the entry point"),
-    Option("-T", 1, "PROFILE", "select the shader profile"),
+    GROUP(BackendFxc | BackendDxc | BackendSpirv, "Entry point and shader profile"),
+    OPTION("-E", 1, "ENTRY", "select the entry point"),
+    OPTION("-T", 1, "PROFILE", "select the shader profile"),
 
-    Group(BackendFxc | BackendDxc | BackendSpirv, "Compiler outputs"),
-    Option("-Fc", 1, "FILE", "write assembly text"),
-    Option("-Fd", 1, "FILE", "write debug information"),
-    Option("-Fe", 1, "FILE", "write warnings and errors"),
-    Option("-Fh", 1, "FILE", "write a hexadecimal header"),
-    Option("-Fo", 1, "FILE", "write compiled shader binary"),
-    Option("-Vn", 1, "NAME", "set header variable name"),
+    GROUP(BackendFxc | BackendDxc | BackendSpirv, "Compiler outputs"),
+    OPTION("-Fc", 1, "FILE", "write assembly text"),
+    OPTION("-Fd", 1, "FILE", "write debug information"),
+    OPTION("-Fe", 1, "FILE", "write warnings and errors"),
+    OPTION("-Fh", 1, "FILE", "write a hexadecimal header"),
+    OPTION("-Fo", 1, "FILE", "write compiled shader binary"),
+    OPTION("-Vn", 1, "NAME", "set header variable name"),
 
-    Group(BackendFxc | BackendDxc | BackendSpirv, "Optimization and flow control"),
-    Option("-Gfa", 0, NULL, "prefer flow-control constructs"),
-    Option("-Gfp", 0, NULL, "prefer unrolled shaders"),
-    Option("-Od", 0, NULL, "disable optimizations"),
-    Option("-O0", 0, NULL, "optimization level 0"),
-    Option("-O1", 0, NULL, "optimization level 1"),
-    Option("-O2", 0, NULL, "optimization level 2"),
-    Option("-O3", 0, NULL, "optimization level 3"),
+    GROUP(BackendFxc | BackendDxc | BackendSpirv, "Optimization and flow control"),
+    OPTION("-Gfa", 0, NULL, "prefer flow-control constructs"),
+    OPTION("-Gfp", 0, NULL, "prefer unrolled shaders"),
+    OPTION("-Od", 0, NULL, "disable optimizations"),
+    OPTION("-O0", 0, NULL, "optimization level 0"),
+    OPTION("-O1", 0, NULL, "optimization level 1"),
+    OPTION("-O2", 0, NULL, "optimization level 2"),
+    OPTION("-O3", 0, NULL, "optimization level 3"),
 
-    Group(BackendFxc | BackendDxc | BackendSpirv, "Validation and language behavior"),
-    Option("-Gec", 0, NULL, "enable backward compatibility"),
-    Option("-Ges", 0, NULL, "enable strict mode"),
-    Option("-Gis", 0, NULL, "force IEEE strictness"),
-    Option("-Vd", 0, NULL, "disable validation"),
-    Option("-WX", 0, NULL, "treat warnings as errors"),
-    Option("-Zpc", 0, NULL, "pack matrices in column-major order"),
-    Option("-Zpr", 0, NULL, "pack matrices in row-major order"),
-    Group(BackendDxc | BackendSpirv, "DXC validation and language behavior"),
-    Option("-default-linkage", 1, "MODE", "set default linkage"),
-    Option("-denorm", 1, "MODE", "select denormal handling"),
-    Option("-disable-payload-qualifiers", 0, NULL, "disable payload access qualifiers"),
-    Option("-enable-payload-qualifiers", 0, NULL, "enable payload access qualifiers"),
-    Option("-enable-16bit-types", 0, NULL, "enable native 16-bit types"),
-    Option("-enable-lifetime-markers", 0, NULL, "enable lifetime markers"),
-    Option("-fdisable-loc-tracking", 0, NULL, "disable source-location tracking"),
-    Option("-flegacy-resource-reservation", 0, NULL, "use legacy resource reservation"),
-    Option("-fnew-inlining-behavior", 0, NULL, "use new inlining behavior"),
-    Option("-HV", 1, "YEAR", "select HLSL language version"),
+    GROUP(BackendFxc | BackendDxc | BackendSpirv, "Validation and language behavior"),
+    OPTION("-Gec", 0, NULL, "enable backward compatibility"),
+    OPTION("-Ges", 0, NULL, "enable strict mode"),
+    OPTION("-Gis", 0, NULL, "force IEEE strictness"),
+    OPTION("-Vd", 0, NULL, "disable validation"),
+    OPTION("-WX", 0, NULL, "treat warnings as errors"),
+    OPTION("-Zpc", 0, NULL, "pack matrices in column-major order"),
+    OPTION("-Zpr", 0, NULL, "pack matrices in row-major order"),
+    GROUP(BackendDxc | BackendSpirv, "DXC validation and language behavior"),
+    OPTION("-default-linkage", 1, "MODE", "set default linkage"),
+    OPTION("-denorm", 1, "MODE", "select denormal handling"),
+    OPTION("-disable-payload-qualifiers", 0, NULL, "disable payload access qualifiers"),
+    OPTION("-enable-payload-qualifiers", 0, NULL, "enable payload access qualifiers"),
+    OPTION("-enable-16bit-types", 0, NULL, "enable native 16-bit types"),
+    OPTION("-enable-lifetime-markers", 0, NULL, "enable lifetime markers"),
+    OPTION("-fdisable-loc-tracking", 0, NULL, "disable source-location tracking"),
+    OPTION("-flegacy-resource-reservation", 0, NULL, "use legacy resource reservation"),
+    OPTION("-fnew-inlining-behavior", 0, NULL, "use new inlining behavior"),
+    OPTION("-HV", 1, "YEAR", "select HLSL language version"),
 
-    Group(BackendFxc | BackendDxc | BackendSpirv, "Debug information"),
-    Option("-Zi", 0, NULL, "enable debug information"),
-    Group(BackendDxc | BackendSpirv, "DXC debug information"),
-    Option("-Qembed_debug", 0, NULL, "embed debug information"),
-    Option("-Qsource_in_debug_module", 0, NULL, "embed source in debug module"),
-    Option("-Zsb", 0, NULL, "compute debug name from binary"),
-    Option("-Zss", 0, NULL, "compute debug name from source"),
+    GROUP(BackendFxc | BackendDxc | BackendSpirv, "Debug information"),
+    OPTION("-Zi", 0, NULL, "enable debug information"),
+    GROUP(BackendDxc | BackendSpirv, "DXC debug information"),
+    OPTION("-Qembed_debug", 0, NULL, "embed debug information"),
+    OPTION("-Qsource_in_debug_module", 0, NULL, "embed source in debug module"),
+    OPTION("-Zsb", 0, NULL, "compute debug name from binary"),
+    OPTION("-Zss", 0, NULL, "compute debug name from source"),
 
-    Group(BackendFxc | BackendDxc | BackendSpirv, "Diagnostics and presentation"),
-    Option("-Cc", 0, NULL, "color-code assembly output"),
-    Option("-Lx", 0, NULL, "output hexadecimal literals"),
-    Option("-Ni", 0, NULL, "number assembly instructions"),
-    Option("-No", 0, NULL, "output instruction byte offsets"),
-    Option("-nologo", 0, NULL, "suppress the compiler banner"),
-    Option("-no-warnings", 0, NULL, "suppress warnings"),
-    Group(BackendDxc | BackendSpirv, "DXC diagnostics and presentation"),
-    OptionForBackends(BackendDxc | BackendSpirv, "-H", 0, NULL, "display include hierarchy"),
-    Option("-Zs", 0, NULL, "perform syntax checking only"),
-    Option("-fdiagnostics-show-option", 0, NULL, "show diagnostic option names"),
-    Option("-fno-diagnostics-show-option", 0, NULL, "hide diagnostic option names"),
-    Option("-ftime-report", 0, NULL, "print compilation timing"),
-    Option("-ftime-trace", 0, NULL, "write a time trace"),
-    Option("-verbose", 0, NULL, "enable verbose compiler output"),
-    Option("-fdiagnostics-format=", 0, "FORMAT", "select diagnostic format"),
-    Option("-ftime-trace=", 0, "FILE", "select time-trace output"),
-    Option("-ftime-trace-granularity=", 0, "MICROSECONDS", "set time-trace granularity"),
+    GROUP(BackendFxc | BackendDxc | BackendSpirv, "Diagnostics and presentation"),
+    OPTION("-Cc", 0, NULL, "color-code assembly output"),
+    OPTION("-Lx", 0, NULL, "output hexadecimal literals"),
+    OPTION("-Ni", 0, NULL, "number assembly instructions"),
+    OPTION("-No", 0, NULL, "output instruction byte offsets"),
+    OPTION("-nologo", 0, NULL, "suppress the compiler banner"),
+    OPTION("-no-warnings", 0, NULL, "suppress warnings"),
+    GROUP(BackendDxc | BackendSpirv, "DXC diagnostics and presentation"),
+    OPTION_FOR_BACKENDS(BackendDxc | BackendSpirv, "-H", 0, NULL, "display include hierarchy"),
+    OPTION("-Zs", 0, NULL, "perform syntax checking only"),
+    OPTION("-fdiagnostics-show-option", 0, NULL, "show diagnostic option names"),
+    OPTION("-fno-diagnostics-show-option", 0, NULL, "hide diagnostic option names"),
+    OPTION("-ftime-report", 0, NULL, "print compilation timing"),
+    OPTION("-ftime-trace", 0, NULL, "write a time trace"),
+    OPTION("-verbose", 0, NULL, "enable verbose compiler output"),
+    OPTION("-fdiagnostics-format=", 0, "FORMAT", "select diagnostic format"),
+    OPTION("-ftime-trace=", 0, "FILE", "select time-trace output"),
+    OPTION("-ftime-trace-granularity=", 0, "MICROSECONDS", "set time-trace granularity"),
 
-    Group(BackendDxc | BackendSpirv, "Linking, exports, and root signatures"),
-    Option("-auto-binding-space", 1, "SPACE", "set automatic binding space"),
-    Option("-export-shaders-only", 0, NULL, "export shaders only"),
-    Option("-exports", 1, "EXPORTS", "select exports"),
-    Option("-force-rootsig-ver", 1, "VERSION", "force root-signature version"),
-    Option("-Fre", 1, "FILE", "write reflection data"),
-    Option("-Frs", 1, "FILE", "write root signature"),
-    Option("-Fsh", 1, "FILE", "write shader hash"),
-    Option("-pack-optimized", 0, NULL, "optimize signature packing"),
-    Option("-pack-prefix-stable", 0, NULL, "keep signature prefixes stable"),
-    Option("-rootsig-define", 1, "MACRO", "select root-signature macro"),
+    GROUP(BackendDxc | BackendSpirv, "Linking, exports, and root signatures"),
+    OPTION("-auto-binding-space", 1, "SPACE", "set automatic binding space"),
+    OPTION("-export-shaders-only", 0, NULL, "export shaders only"),
+    OPTION("-exports", 1, "EXPORTS", "select exports"),
+    OPTION("-force-rootsig-ver", 1, "VERSION", "force root-signature version"),
+    OPTION("-Fre", 1, "FILE", "write reflection data"),
+    OPTION("-Frs", 1, "FILE", "write root signature"),
+    OPTION("-Fsh", 1, "FILE", "write shader hash"),
+    OPTION("-pack-optimized", 0, NULL, "optimize signature packing"),
+    OPTION("-pack-prefix-stable", 0, NULL, "keep signature prefixes stable"),
+    OPTION("-rootsig-define", 1, "MACRO", "select root-signature macro"),
 
-    Group(BackendFxc | BackendDxc | BackendSpirv, "Resource assumptions"),
-    Option("-all-resources-bound", 0, NULL, "assume all resources are bound"),
-    Option("-res-may-alias", 0, NULL, "allow resource aliasing"),
+    GROUP(BackendFxc | BackendDxc | BackendSpirv, "Resource assumptions"),
+    OPTION("-all-resources-bound", 0, NULL, "assume all resources are bound"),
+    OPTION("-res-may-alias", 0, NULL, "allow resource aliasing"),
 
-    Group(BackendSpirv, "SPIR-V binding remapping"),
-    Option("-fvk-auto-shift-bindings", 0, NULL, "automatically shift Vulkan bindings"),
-    Option("-fvk-b-shift", 2, "SHIFT SPACE", "shift constant-buffer bindings"),
-    Option("-fvk-bind-counter-heap", 2, "BINDING SET", "bind counter heap"),
-    Option("-fvk-bind-globals", 2, "BINDING SET", "bind globals"),
-    Option("-fvk-bind-register", 4, "TYPE NUMBER SPACE SET", "remap a register"),
-    Option("-fvk-bind-resource-heap", 2, "BINDING SET", "bind resource heap"),
-    Option("-fvk-bind-sampler-heap", 2, "BINDING SET", "bind sampler heap"),
-    Option("-fvk-s-shift", 2, "SHIFT SPACE", "shift sampler bindings"),
-    Option("-fvk-t-shift", 2, "SHIFT SPACE", "shift texture bindings"),
-    Option("-fvk-u-shift", 2, "SHIFT SPACE", "shift UAV bindings"),
+    GROUP(BackendSpirv, "SPIR-V binding remapping"),
+    OPTION("-fvk-auto-shift-bindings", 0, NULL, "automatically shift Vulkan bindings"),
+    OPTION("-fvk-b-shift", 2, "SHIFT SPACE", "shift constant-buffer bindings"),
+    OPTION("-fvk-bind-counter-heap", 2, "BINDING SET", "bind counter heap"),
+    OPTION("-fvk-bind-globals", 2, "BINDING SET", "bind globals"),
+    OPTION("-fvk-bind-register", 4, "TYPE NUMBER SPACE SET", "remap a register"),
+    OPTION("-fvk-bind-resource-heap", 2, "BINDING SET", "bind resource heap"),
+    OPTION("-fvk-bind-sampler-heap", 2, "BINDING SET", "bind sampler heap"),
+    OPTION("-fvk-s-shift", 2, "SHIFT SPACE", "shift sampler bindings"),
+    OPTION("-fvk-t-shift", 2, "SHIFT SPACE", "shift texture bindings"),
+    OPTION("-fvk-u-shift", 2, "SHIFT SPACE", "shift UAV bindings"),
 
-    Group(BackendSpirv, "SPIR-V memory layout"),
-    Option("-fspv-flatten-resource-arrays", 0, NULL, "flatten resource arrays"),
-    Option("-fspv-use-legacy-buffer-matrix-order", 0, NULL,
+    GROUP(BackendSpirv, "SPIR-V memory layout"),
+    OPTION("-fspv-flatten-resource-arrays", 0, NULL, "flatten resource arrays"),
+    OPTION("-fspv-use-legacy-buffer-matrix-order", 0, NULL,
            "use legacy buffer matrix order"),
-    Option("-fspv-use-unknown-image-format", 0, NULL,
+    OPTION("-fspv-use-unknown-image-format", 0, NULL,
            "allow unknown storage image formats"),
-    Option("-fspv-use-vulkan-memory-model", 0, NULL, "use Vulkan memory model"),
-    Option("-fvk-invert-y", 0, NULL, "invert the Vulkan Y axis"),
-    Option("-fvk-support-nonzero-base-instance", 0, NULL, "support nonzero base instance"),
-    Option("-fvk-support-nonzero-base-vertex", 0, NULL, "support nonzero base vertex"),
-    Option("-fvk-use-dx-layout", 0, NULL, "use DirectX memory layout"),
-    Option("-fvk-use-dx-position-w", 0, NULL, "use DirectX position W"),
-    Option("-fvk-use-gl-layout", 0, NULL, "use OpenGL memory layout"),
-    Option("-fvk-use-scalar-layout", 0, NULL, "use scalar memory layout"),
+    OPTION("-fspv-use-vulkan-memory-model", 0, NULL, "use Vulkan memory model"),
+    OPTION("-fvk-invert-y", 0, NULL, "invert the Vulkan Y axis"),
+    OPTION("-fvk-support-nonzero-base-instance", 0, NULL, "support nonzero base instance"),
+    OPTION("-fvk-support-nonzero-base-vertex", 0, NULL, "support nonzero base vertex"),
+    OPTION("-fvk-use-dx-layout", 0, NULL, "use DirectX memory layout"),
+    OPTION("-fvk-use-dx-position-w", 0, NULL, "use DirectX position W"),
+    OPTION("-fvk-use-gl-layout", 0, NULL, "use OpenGL memory layout"),
+    OPTION("-fvk-use-scalar-layout", 0, NULL, "use scalar memory layout"),
 
-    Group(BackendSpirv, "SPIR-V code generation, debug, and optimization"),
-    Option("-fspv-enable-maximal-reconvergence", 0, NULL, "enable maximal reconvergence"),
-    Option("-fspv-max-id", 2, "ID SHIFT", "set SPIR-V maximum ID"),
-    Option("-fspv-preserve-bindings", 0, NULL, "preserve resource bindings"),
-    Option("-fspv-preserve-interface", 0, NULL, "preserve entry-point interface"),
-    Option("-fspv-print-all", 0, NULL, "print SPIR-V after every pass"),
-    Option("-fspv-reduce-load-size", 0, NULL, "reduce SPIR-V load size"),
-    Option("-fspv-reflect", 0, NULL, "emit reflection decorations"),
-    Option("-fspv-debug=", 0, "MODE", "select SPIR-V debug information"),
-    Option("-fspv-entrypoint-name=", 0, "NAME", "set SPIR-V entry-point name"),
-    Option("-fspv-extension=", 0, "EXTENSION", "enable a SPIR-V extension"),
-    Option("-fspv-target-env=", 0, "ENVIRONMENT", "select SPIR-V target environment"),
-    Option("-Oconfig=", 0, "PASSES", "select SPIR-V optimization passes")};
+    GROUP(BackendSpirv, "SPIR-V code generation, debug, and optimization"),
+    OPTION("-fspv-enable-maximal-reconvergence", 0, NULL, "enable maximal reconvergence"),
+    OPTION("-fspv-max-id", 2, "ID SHIFT", "set SPIR-V maximum ID"),
+    OPTION("-fspv-preserve-bindings", 0, NULL, "preserve resource bindings"),
+    OPTION("-fspv-preserve-interface", 0, NULL, "preserve entry-point interface"),
+    OPTION("-fspv-print-all", 0, NULL, "print SPIR-V after every pass"),
+    OPTION("-fspv-reduce-load-size", 0, NULL, "reduce SPIR-V load size"),
+    OPTION("-fspv-reflect", 0, NULL, "emit reflection decorations"),
+    OPTION("-fspv-debug=", 0, "MODE", "select SPIR-V debug information"),
+    OPTION("-fspv-entrypoint-name=", 0, "NAME", "set SPIR-V entry-point name"),
+    OPTION("-fspv-extension=", 0, "EXTENSION", "enable a SPIR-V extension"),
+    OPTION("-fspv-target-env=", 0, "ENVIRONMENT", "select SPIR-V target environment"),
+    OPTION("-Oconfig=", 0, "PASSES", "select SPIR-V optimization passes")};
 
 static const BackendSpec BackendSpecs[] = {
     {"fxc", BackendFxc, "compile DXBC with FXC (Shader Model 5.0 or 5.1)"},
     {"dxc", BackendDxc, "compile DXIL with DXC (Shader Model 6.0 or newer)"},
     {"spirv", BackendSpirv, "compile SPIR-V with DXC (Shader Model 6.0 or newer)"}};
 
-#undef Group
-#undef Option
-#undef OptionForBackends
+#undef GROUP
+#undef OPTION
+#undef OPTION_FOR_BACKENDS
 
 const BackendSpec *FindBackendSpec(const char *name) {
     size_t i;
@@ -514,11 +514,11 @@ const BackendSpec *FindBackendSpec(const char *name) {
 }
 
 static uint8_t OptionBackendMask(const OptionSpec *spec) {
-    return (uint8_t)((spec->Classification & OptionBackendMaskValue) >> 8);
+    return (uint8_t)((spec->Classification & OPTION_BACKEND_MASK_VALUE) >> 8);
 }
 
 static bool OptionSpecIsGroup(const OptionSpec *spec) {
-    return (spec->Classification & OptionGroupMask) != 0;
+    return (spec->Classification & OPTION_GROUP_MASK) != 0;
 }
 
 static bool OptionSpecSupportsBackends(const OptionSpec *group, const OptionSpec *spec,
@@ -536,7 +536,7 @@ static bool ValidateOptionSpecs(void) {
     validation_state = -1;
     for (i = 0; i < sizeof(OptionSpecs) / sizeof(OptionSpecs[0]); ++i) {
         const OptionSpec *spec = &OptionSpecs[i];
-        if (spec->Classification & OptionReservedMask)
+        if (spec->Classification & OPTION_RESERVED_MASK)
             goto invalid;
         if (OptionSpecIsGroup(spec)) {
             if (have_group && !group_has_option)
@@ -559,7 +559,7 @@ static bool ValidateOptionSpecs(void) {
     validation_state = 1;
     return true;
 invalid:
-    LogE("invalid OptionSpecs entry at index %zu\n", i);
+    LOG_E("invalid OptionSpecs entry at index %zu\n", i);
     return false;
 }
 
@@ -597,16 +597,16 @@ const OptionSpec *FindOptionSpec(const BackendSpec *backend, const char *option)
 
 static void PrintBackends(void) {
     size_t i;
-    LogI("\backend_count:\n");
+    LOG_I("\backend_count:\n");
     for (i = 0; i < sizeof(BackendSpecs) / sizeof(BackendSpecs[0]); ++i)
-        LogI("  %-10s %s\n", BackendSpecs[i].Name, BackendSpecs[i].Description);
+        LOG_I("  %-10s %s\n", BackendSpecs[i].Name, BackendSpecs[i].Description);
 }
 
 void Usage(const char *prog, const BackendSpec *backend) {
     const size_t count = sizeof(OptionSpecs) / sizeof(OptionSpecs[0]);
     const uint32_t target_backends = backend ? backend->Backend : 0;
     size_t i = 0;
-    LogI("Usage: %s <fxc|dxc|spirv> -compiler <path> [options] <source>\n",
+    LOG_I("Usage: %s <fxc|dxc|spirv> -compiler <path> [options] <source>\n",
          prog ? prog : "ShaderTool");
     PrintBackends();
     if (!backend)
@@ -621,13 +621,13 @@ void Usage(const char *prog, const BackendSpec *backend) {
             if (!OptionSpecSupportsBackends(group, spec, target_backends))
                 continue;
             if (!printed_group) {
-                LogI("\n%s:\n", group->Description);
+                LOG_I("\n%s:\n", group->Description);
                 printed_group = true;
             }
             if (spec->ValueName) {
-                LogI("  %-20s %-14s %s\n", spec->Name, spec->ValueName, spec->Description);
+                LOG_I("  %-20s %-14s %s\n", spec->Name, spec->ValueName, spec->Description);
             } else {
-                LogI("  %-35s %s\n", spec->Name, spec->Description);
+                LOG_I("  %-35s %s\n", spec->Name, spec->Description);
             }
         }
     }
@@ -690,21 +690,21 @@ static enum OptionFetchResult OptionContextFetch(OptionContext *context,
         return OptionFetchEnd;
     argument = context->Argv[context->Index++];
     memset(option, 0, sizeof(*option));
-    AStringViewInit(&option->Spelling, argument);
+    option->Spelling = AStringViewFromCString(argument);
     if (argument[0] != '-')
         return OptionFetchOperand;
     spec = FindOptionSpec(context->Backend, argument);
     if (!spec) {
-        LogE("unknown or non-compilation option '%s'\n", argument);
+        LOG_E("unknown or non-compilation option '%s'\n", argument);
         return OptionFetchError;
     }
     if (spec->NumValues > (size_t)context->Argc - context->Index) {
-        LogE("option '%s' requires %u value(s)\n", argument, spec->NumValues);
+        LOG_E("option '%s' requires %u value(s)\n", argument, spec->NumValues);
         return OptionFetchError;
     }
     option->Spec = spec;
     for (j = 0; j < spec->NumValues; ++j)
-        AStringViewInit(&option->Values[j], context->Argv[context->Index++]);
+        option->Values[j] = AStringViewFromCString(context->Argv[context->Index++]);
     return OptionFetchOption;
 }
 
@@ -721,18 +721,18 @@ int ParseCommandLine(int argc, const char **argv, Args *args) {
         return 1;
     }
     if (argc < 2) {
-        LogE("a backend subcommand is required\n");
+        LOG_E("a backend subcommand is required\n");
         return -1;
     }
     backend = FindBackendSpec(argv[1]);
     if (!backend) {
-        LogE("Unknown ShaderTool backend '%s'\n", argv[1]);
+        LOG_E("Unknown ShaderTool backend '%s'\n", argv[1]);
         return -1;
     }
     args->Backend = backend->Backend;
 #if !defined(_WIN32) && !defined(SHADERTOOL_ALLOW_FXC)
     if (args->Backend == BackendFxc) {
-        LogE("the fxc backend is unsupported on native Unix\n");
+        LOG_E("the fxc backend is unsupported on native Unix\n");
         return -1;
     }
 #endif
@@ -743,7 +743,7 @@ int ParseCommandLine(int argc, const char **argv, Args *args) {
         if (fetched == OptionFetchOperand) {
             ++source_count;
             if (source_count != 1 || context.Index != (size_t)argc) {
-                LogE("exactly one source file must be the final argument\n");
+                LOG_E("exactly one source file must be the final argument\n");
                 return -1;
             }
             args->SourceFilePath = option.Spelling;
@@ -756,7 +756,7 @@ int ParseCommandLine(int argc, const char **argv, Args *args) {
         }
         if (!strcmp(spec->Name, "-compiler")) {
             if (++compiler_count != 1) {
-                LogE("-compiler may be specified exactly once\n");
+                LOG_E("-compiler may be specified exactly once\n");
                 return -1;
             }
             args->CompilerProgram = option.Values[0];
@@ -764,7 +764,7 @@ int ParseCommandLine(int argc, const char **argv, Args *args) {
         }
         if (!strcmp(spec->Name, "-depfile")) {
             if (++depfile_count != 1) {
-                LogE("-depfile may be specified at most once\n");
+                LOG_E("-depfile may be specified at most once\n");
                 return -1;
             }
             args->DepfilePath = option.Values[0];
@@ -774,11 +774,11 @@ int ParseCommandLine(int argc, const char **argv, Args *args) {
             continue;
         if (!strcmp(spec->Name, "-spirv")) {
             if (args->Backend == BackendFxc)
-                LogE("-spirv is not valid for FXC\n");
+                LOG_E("-spirv is not valid for FXC\n");
             else if (args->Backend == BackendSpirv)
-                LogE("-spirv is implicit for the spirv subcommand\n");
+                LOG_E("-spirv is implicit for the spirv subcommand\n");
             else
-                LogE("-spirv is only selected by the spirv subcommand\n");
+                LOG_E("-spirv is only selected by the spirv subcommand\n");
             return -1;
         }
         if (!strcmp(spec->Name, "-Fo") || !strcmp(spec->Name, "-Fh")) {
@@ -791,17 +791,17 @@ int ParseCommandLine(int argc, const char **argv, Args *args) {
         else if (!strcmp(spec->Name, "-T")) {
             ++profile_count;
             if (ParseProfile(&option.Values[0], &major, &minor)) {
-                LogE("invalid shader profile '%.*s'\n", (int)option.Values[0].Length,
+                LOG_E("invalid shader profile '%.*s'\n", (int)option.Values[0].Length,
                      option.Values[0].Buffer);
                 return -1;
             }
             if (args->Backend == BackendFxc) {
                 if (major != 5 || minor > 1) {
-                    LogE("FXC requires shader profile 5_0 or 5_1\n");
+                    LOG_E("FXC requires shader profile 5_0 or 5_1\n");
                     return -1;
                 }
             } else if (major < 6) {
-                LogE("DXC requires shader profile 6_0 or newer\n");
+                LOG_E("DXC requires shader profile 6_0 or newer\n");
                 return -1;
             }
         }
@@ -809,19 +809,19 @@ int ParseCommandLine(int argc, const char **argv, Args *args) {
             return -1;
     }
     if (compiler_count != 1) {
-        LogE("-compiler is required\n");
+        LOG_E("-compiler is required\n");
         return -1;
     }
     if (source_count != 1) {
-        LogE("exactly one source file is required\n");
+        LOG_E("exactly one source file is required\n");
         return -1;
     }
     if (!profile_count) {
-        LogE("-T <profile> is required\n");
+        LOG_E("-T <profile> is required\n");
         return -1;
     }
     if (ArgsHasDepfile(args) && AStringViewIsEmpty(&args->OutputFilePath)) {
-        LogE("-depfile requires a compilation output selected by -Fo or -Fh\n");
+        LOG_E("-depfile requires a compilation output selected by -Fo or -Fh\n");
         return -1;
     }
     return 0;
@@ -843,18 +843,18 @@ static int MarshalOutputHeader(const Args *args) {
 
     if(!AStringViewIsEmpty(&args->HeaderVariableName)) {
         variable = args->HeaderVariableName;
-        AStringViewInit(&var_prefix, "");
+        var_prefix = A_STRING_VIEW_LITERAL("");
     } else if(!AStringViewIsEmpty(&args->EntryPointName)) {
         variable = args->EntryPointName;
-        AStringViewInit(&var_prefix, "g_");
+        var_prefix = A_STRING_VIEW_LITERAL("g_");
     } else {
-        AStringViewInit(&variable, "g_main");
-        AStringViewInit(&var_prefix, "");
+        variable = A_STRING_VIEW_LITERAL("g_main");
+        var_prefix = A_STRING_VIEW_LITERAL("");
     }
 
-    AStringViewInit(&suffix_toks[0], "\nconst unsigned int ");
-    AStringViewInit(&suffix_toks[1], "_size = sizeof(");
-    AStringViewInit(&suffix_toks[2], ");\n");
+    suffix_toks[0] = A_STRING_VIEW_LITERAL("\nconst unsigned int ");
+    suffix_toks[1] = A_STRING_VIEW_LITERAL("_size = sizeof(");
+    suffix_toks[2] = A_STRING_VIEW_LITERAL(");\n");
 
     if (ByteBufferCatAStringViews(&suffix, 7, &suffix_toks[0], &var_prefix, &variable,
                                   &suffix_toks[1], &var_prefix, &variable, &suffix_toks[2]))
@@ -870,14 +870,14 @@ static int MarshalOutputHeader(const Args *args) {
     if (FileReadAll(args->OutputFilePath.Buffer, &source))
         goto cleanup;
 
-    AStringViewInit(&declaration_toks[0], "const BYTE ");
-    AStringViewInit(&declaration_toks[1], "[]");
+    declaration_toks[0] = A_STRING_VIEW_LITERAL("const BYTE ");
+    declaration_toks[1] = A_STRING_VIEW_LITERAL("[]");
     if (AStringCatN(&declaration, 4, &declaration_toks[0], &var_prefix, &variable,
                     &declaration_toks[1]))
         goto cleanup;
     type = strstr(source.Buffer, declaration.Buffer);
     if (!type) {
-        LogE("ShaderTool: FXC header declaration '%s' was not found\n",
+        LOG_E("ShaderTool: FXC header declaration '%s' was not found\n",
              declaration.Buffer);
         goto cleanup;
     }
@@ -947,7 +947,7 @@ static int ComposeCompilerCommand(const Args *args, CompilerCommand *command) {
 
     command->Arguments = (char **)calloc(1, pointer_bytes + rewrite_size);
     if (!command->Arguments) {
-        LogE("Failed to allocate compiler command arguments\n");
+        LOG_E("Failed to allocate compiler command arguments\n");
         return -1;
     }
     if(rewrite_size)
@@ -989,7 +989,7 @@ static int ComposeCompilerCommand(const Args *args, CompilerCommand *command) {
 
 static int CompilerOutput(void *context, const char *bytes, size_t size, bool final) {
     AStringView view;
-    AStringViewInit2(&view, bytes, size);
+    view = AStringViewFromBuffer(bytes, size);
     return DependsParserInput((DependsParserContext *)context, &view, final);
 }
 

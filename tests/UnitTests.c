@@ -11,10 +11,10 @@
 
 static int Failures;
 
-#define Check(condition)                                                        \
+#define CHECK(condition)                                                        \
     do {                                                                        \
         if (!(condition)) {                                                     \
-            fprintf(stderr, "%s:%d: Check(%s) failed\n", __FILE__, __LINE__, \
+            fprintf(stderr, "%s:%d: CHECK(%s) failed\n", __FILE__, __LINE__, \
                     #condition);                                                \
             ++Failures;                                                         \
         }                                                                       \
@@ -25,53 +25,53 @@ static void TestDynamicArray(void) {
     const int first[] = {1, 2, 3};
     const int second[] = {4, 5};
 
-    Check(DynamicArrayAppend(&array, sizeof(int), first, 3, "test") == 0);
-    Check(DynamicArrayAppend(&array, sizeof(int), second, 2, "test") == 0);
-    Check(array.Size == 5);
-    Check(array.Capacity >= array.Size);
-    Check(!memcmp(array.Buffer, (int[]){1, 2, 3, 4, 5}, 5 * sizeof(int)));
-    Check(DynamicArrayErase(&array, sizeof(int), 1, 4) == 0);
-    Check(array.Size == 2);
-    Check(!memcmp(array.Buffer, (int[]){1, 5}, 2 * sizeof(int)));
-    Check(DynamicArrayErase(&array, sizeof(int), 2, 1) != 0);
-    Check(DynamicArrayErase(&array, sizeof(int), 0, 3) != 0);
+    CHECK(DynamicArrayAppend(&array, sizeof(int), first, 3, "test") == 0);
+    CHECK(DynamicArrayAppend(&array, sizeof(int), second, 2, "test") == 0);
+    CHECK(array.Size == 5);
+    CHECK(array.Capacity >= array.Size);
+    CHECK(!memcmp(array.Buffer, (int[]){1, 2, 3, 4, 5}, 5 * sizeof(int)));
+    CHECK(DynamicArrayErase(&array, sizeof(int), 1, 4) == 0);
+    CHECK(array.Size == 2);
+    CHECK(!memcmp(array.Buffer, (int[]){1, 5}, 2 * sizeof(int)));
+    CHECK(DynamicArrayErase(&array, sizeof(int), 2, 1) != 0);
+    CHECK(DynamicArrayErase(&array, sizeof(int), 0, 3) != 0);
     DynamicArrayDeinit(&array);
-    Check(!array.Buffer && !array.Size && !array.Capacity);
+    CHECK(!array.Buffer && !array.Size && !array.Capacity);
 }
 
 static void TestStringViews(void) {
-    AStringView empty = AStringViewCreate(NULL);
-    AStringView text = AStringViewCreate("shader");
+    AStringView empty = AStringViewFromCString(NULL);
+    AStringView text = AStringViewFromCString("shader");
     AStringView same;
-    AStringView prefix = AStringViewCreate("sha");
+    AStringView prefix = AStringViewFromCString("sha");
 
-    AStringViewInit2(&same, "shader suffix", 6);
-    Check(AStringViewIsEmpty(&empty));
-    Check(AStringViewEqual(&empty, NULL));
-    Check(AStringViewEqual(&text, "shader"));
-    Check(!AStringViewEqual(&text, "shade"));
-    Check(AStringViewEqual2(&text, &same));
-    Check(AStringViewEqualAtLeast(&text, &prefix));
-    Check(!AStringViewEqualAtLeast(&prefix, &text));
+    same = AStringViewFromBuffer("shader suffix", 6);
+    CHECK(AStringViewIsEmpty(&empty));
+    CHECK(AStringViewEqual(&empty, NULL));
+    CHECK(AStringViewEqual(&text, "shader"));
+    CHECK(!AStringViewEqual(&text, "shade"));
+    CHECK(AStringViewEqual2(&text, &same));
+    CHECK(AStringViewEqualAtLeast(&text, &prefix));
+    CHECK(!AStringViewEqualAtLeast(&prefix, &text));
 }
 
 static void TestStrings(void) {
     AString string = {0};
-    AStringView shader = AStringViewCreate("shader");
-    AStringView tool = AStringViewCreate("tool");
+    AStringView shader = AStringViewFromCString("shader");
+    AStringView tool = AStringViewFromCString("tool");
 
-    Check(AStringCopy(&string, &shader) == 0);
-    Check(AStringCatN(&string, 1, &tool) == 0);
-    Check(string.Length == 10 && !strcmp(string.Buffer, "shadertool"));
-    Check(AStringAppendFormat(&string, "-%d-%s", 17, "ok") == 0);
-    Check(string.Length == 16 && !strcmp(string.Buffer, "shadertool-17-ok"));
+    CHECK(AStringCopy(&string, &shader) == 0);
+    CHECK(AStringCatN(&string, 1, &tool) == 0);
+    CHECK(string.Length == 10 && !strcmp(string.Buffer, "shadertool"));
+    CHECK(AStringAppendFormat(&string, "-%d-%s", 17, "ok") == 0);
+    CHECK(string.Length == 16 && !strcmp(string.Buffer, "shadertool-17-ok"));
     AStringDeinit(&string);
 }
 
 static void CheckNormalized(const char *input, const char *expected) {
     AString result = {0};
-    AStringView view = AStringViewCreate(input);
-    Check(NormalizeAPath(&view, &result) == 0);
+    AStringView view = AStringViewFromCString(input);
+    CHECK(NormalizeAPath(&view, &result) == 0);
     if (!result.Buffer || strcmp(result.Buffer, expected)) {
         fprintf(stderr, "NormalizeAPath(\"%s\") produced \"%s\", expected \"%s\"\n",
                 input, result.Buffer ? result.Buffer : "(null)", expected);
@@ -92,28 +92,28 @@ static void TestPaths(void) {
 
 static void TestByteBuffer(void) {
     ByteBuffer buffer = {0};
-    AStringView left = AStringViewCreate("abc");
-    AStringView right = AStringViewCreate("def");
+    AStringView left = AStringViewFromCString("abc");
+    AStringView right = AStringViewFromCString("def");
     AStringView result;
 
-    Check(ByteBufferCatAStringViews(&buffer, 2, &left, &right) == 0);
-    Check(buffer.Size == 6 && !memcmp(buffer.Buffer, "abcdef", 6));
-    Check(ByteBufferEraseRange(&buffer, 2, 4) == 0);
+    CHECK(ByteBufferCatAStringViews(&buffer, 2, &left, &right) == 0);
+    CHECK(buffer.Size == 6 && !memcmp(buffer.Buffer, "abcdef", 6));
+    CHECK(ByteBufferEraseRange(&buffer, 2, 4) == 0);
     ByteBufferGetAStringView(&buffer, &result);
-    Check(result.Length == 4 && !memcmp(result.Buffer, "abef", 4));
-    Check(ByteBufferEraseRange(&buffer, 5, 5) != 0);
+    CHECK(result.Length == 4 && !memcmp(result.Buffer, "abef", 4));
+    CHECK(ByteBufferEraseRange(&buffer, 5, 5) != 0);
     ByteBufferDeinit(&buffer);
 }
 
 static void CheckProfile(const char *profile, int valid, uint32_t expected_major,
                          uint32_t expected_minor) {
-    AStringView view = AStringViewCreate(profile);
+    AStringView view = AStringViewFromCString(profile);
     uint32_t major = UINT32_MAX, minor = UINT32_MAX;
     int result = ParseProfile(&view, &major, &minor);
-    Check((result == 0) == valid);
+    CHECK((result == 0) == valid);
     if (valid) {
-        Check(major == expected_major);
-        Check(minor == expected_minor);
+        CHECK(major == expected_major);
+        CHECK(minor == expected_minor);
     }
 }
 
@@ -135,16 +135,16 @@ static void TestOptionPolicy(void) {
     const BackendSpec *dxc = FindBackendSpec("dxc");
     const BackendSpec *spirv = FindBackendSpec("spirv");
 
-    Check(fxc && dxc && spirv);
-    Check(!FindBackendSpec("DXC"));
-    Check(FindOptionSpec(fxc, "-D"));
-    Check(FindOptionSpec(dxc, "-HV"));
-    Check(!FindOptionSpec(fxc, "-HV"));
-    Check(FindOptionSpec(spirv, "-fspv-reflect"));
-    Check(!FindOptionSpec(dxc, "-fspv-reflect"));
-    Check(FindOptionSpec(spirv, "-fspv-target-env=vulkan1.3"));
-    Check(!FindOptionSpec(spirv, "-fspv-target-env"));
-    Check(!FindOptionSpec(dxc, "-Odextra"));
+    CHECK(fxc && dxc && spirv);
+    CHECK(!FindBackendSpec("DXC"));
+    CHECK(FindOptionSpec(fxc, "-D"));
+    CHECK(FindOptionSpec(dxc, "-HV"));
+    CHECK(!FindOptionSpec(fxc, "-HV"));
+    CHECK(FindOptionSpec(spirv, "-fspv-reflect"));
+    CHECK(!FindOptionSpec(dxc, "-fspv-reflect"));
+    CHECK(FindOptionSpec(spirv, "-fspv-target-env=vulkan1.3"));
+    CHECK(!FindOptionSpec(spirv, "-fspv-target-env"));
+    CHECK(!FindOptionSpec(dxc, "-Odextra"));
 }
 
 static void TestFiles(const char *root) {
@@ -155,21 +155,21 @@ static void TestFiles(const char *root) {
 
     snprintf(path, sizeof(path), "%s/state.bin", root);
     file = fopen(path, "wb");
-    Check(file != NULL);
+    CHECK(file != NULL);
     if (!file)
         return;
     fclose(file);
 
-    Check(FileWriteIfChanged(path, "first", 5, &changed) == 0 && changed);
-    Check(FileWriteIfChanged(path, "first", 5, &changed) == 0 && !changed);
-    Check(FileWriteIfChanged(path, "xy", 2, &changed) == 0 && changed);
-    Check(FileReadAll(path, &content) == 0);
-    Check(content.Size == 2 && !memcmp(content.Buffer, "xy", 2));
-    Check(content.Buffer[content.Size] == 0);
+    CHECK(FileWriteIfChanged(path, "first", 5, &changed) == 0 && changed);
+    CHECK(FileWriteIfChanged(path, "first", 5, &changed) == 0 && !changed);
+    CHECK(FileWriteIfChanged(path, "xy", 2, &changed) == 0 && changed);
+    CHECK(FileReadAll(path, &content) == 0);
+    CHECK(content.Size == 2 && !memcmp(content.Buffer, "xy", 2));
+    CHECK(content.Buffer[content.Size] == 0);
     ByteBufferDeinit(&content);
-    Check(FileWriteAll(path, "z", 1, true) == 0);
-    Check(FileReadAll(path, &content) == 0);
-    Check(content.Size == 3 && !memcmp(content.Buffer, "xyz", 3));
+    CHECK(FileWriteAll(path, "z", 1, true) == 0);
+    CHECK(FileReadAll(path, &content) == 0);
+    CHECK(content.Size == 3 && !memcmp(content.Buffer, "xyz", 3));
     ByteBufferDeinit(&content);
     remove(path);
 }

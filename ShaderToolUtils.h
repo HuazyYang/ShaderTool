@@ -1,5 +1,5 @@
-#ifndef ShaderToolUtilsH
-#define ShaderToolUtilsH
+#ifndef SHADER_TOOL_UTILS_H
+#define SHADER_TOOL_UTILS_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -16,7 +16,8 @@ typedef struct AStringView {
     size_t Length;
 } AStringView;
 
-#define AStringViewInitializer(sz, length) {(sz) ? (sz) : "", (length)}
+#define A_STRING_VIEW_LITERAL(text) \
+    ((AStringView){(text), sizeof(text) - 1})
 
 typedef struct AString {
     union {
@@ -55,9 +56,9 @@ typedef int (*ProgramOutputCallback)(void *context, const char *bytes, size_t si
                                      bool final);
 
 void LogV(int level, const char *format, ...);
-#define LogE(...) LogV(0, __VA_ARGS__)
-#define LogW(...) LogV(1, __VA_ARGS__)
-#define LogI(...) LogV(2, __VA_ARGS__)
+#define LOG_E(...) LogV(0, __VA_ARGS__)
+#define LOG_W(...) LogV(1, __VA_ARGS__)
+#define LOG_I(...) LogV(2, __VA_ARGS__)
 
 int DynamicArrayReserve(DynamicArray *array, size_t element_size, size_t size,
                         size_t extra_capacity, const char *description);
@@ -68,18 +69,17 @@ int DynamicArrayAppend(DynamicArray *array, size_t element_size, const void *ele
 int DynamicArrayErase(DynamicArray *array, size_t element_size, size_t start, size_t end);
 void DynamicArrayDeinit(DynamicArray *array);
 
-#define DynamicArrayResizeTyped(array, type, size, extra_capacity, description)    \
+#define DYNAMIC_ARRAY_RESIZE_TYPED(array, type, size, extra_capacity, description)    \
     DynamicArrayResize(&(array)->Array, sizeof(type), (size), (extra_capacity), \
                        (description))
-#define DynamicArrayAppendTyped(array, type, elements, count, description) \
+#define DYNAMIC_ARRAY_APPEND_TYPED(array, type, elements, count, description) \
     DynamicArrayAppend(&(array)->Array, sizeof(type), (elements), (count), (description))
-#define DynamicArrayEraseTyped(array, type, start, end) \
+#define DYNAMIC_ARRAY_ERASE_TYPED(array, type, start, end) \
     DynamicArrayErase(&(array)->Array, sizeof(type), (start), (end))
-#define DynamicArrayDeinitTyped(array) DynamicArrayDeinit(&(array)->Array)
+#define DYNAMIC_ARRAY_DEINIT_TYPED(array) DynamicArrayDeinit(&(array)->Array)
 
-AStringView AStringViewCreate(const char *text);
-void AStringViewInit(AStringView *string, const char *text);
-void AStringViewInit2(AStringView *string, const char *text, size_t length);
+AStringView AStringViewFromCString(const char *text);
+AStringView AStringViewFromBuffer(const char *data, size_t length);
 bool AStringViewIsEmpty(const AStringView *string);
 bool AStringViewEqual(const AStringView *string, const char *text);
 bool AStringViewEqual2(const AStringView *left, const AStringView *right);

@@ -67,7 +67,7 @@ int DynamicArrayReserve(DynamicArray *array, size_t element_size, size_t size,
 
     new_buffer = MyHeapReAlloc(array->Buffer, allocation_size);
     if (!new_buffer) {
-        LogE("Failed to allocate enough memory for %s\n", description);
+        LOG_E("Failed to allocate enough memory for %s\n", description);
         return -1;
     }
     array->Buffer = new_buffer;
@@ -118,7 +118,7 @@ void DynamicArrayDeinit(DynamicArray *array) {
 
 #pragma region[ AStringView ]
 
-AStringView AStringViewCreate(const char *sz) {
+AStringView AStringViewFromCString(const char *sz) {
     AStringView s;
     if (sz) {
         s.Buffer = sz;
@@ -130,19 +130,11 @@ AStringView AStringViewCreate(const char *sz) {
     return s;
 }
 
-void AStringViewInit(AStringView *s, const char *psz) {
-    if (psz) {
-        s->Buffer = psz;
-        s->Length = strlen(psz);
-    } else {
-        s->Buffer = "";
-        s->Length = 0;
-    }
-}
-
-void AStringViewInit2(AStringView *s, const char *psz, size_t length) {
-    s->Buffer = psz ? psz : "";
-    s->Length = length;
+AStringView AStringViewFromBuffer(const char *psz, size_t length) {
+    AStringView s;
+    s.Buffer = psz ? psz : "";
+    s.Length = length;
+    return s;
 }
 
 bool AStringViewIsEmpty(const AStringView *s) {
@@ -171,11 +163,11 @@ bool AStringViewEqualAtLeast(const AStringView *s, const AStringView *s2) {
 #pragma region[ AString ]
 
 void AStringDeinit(AString *s) {
-    DynamicArrayDeinitTyped(s);
+    DYNAMIC_ARRAY_DEINIT_TYPED(s);
 }
 
 int AStringResize(AString *s, size_t length) {
-    if (DynamicArrayResizeTyped(s, char, length, 1, "AString"))
+    if (DYNAMIC_ARRAY_RESIZE_TYPED(s, char, length, 1, "AString"))
         return -1;
     s->Buffer[length] = 0;
     return 0;
@@ -218,9 +210,9 @@ int AStringCopy(AString *s, const AStringView *src) {
 }
 
 int NormalizeAPath(const AStringView *s, AString *result) {
-    const AStringView sep = AStringViewInitializer("/", 1);
-    const AStringView dots2 = AStringViewInitializer("..", 2);
-    const AStringView dots1 = AStringViewInitializer(".", 1);
+    const AStringView sep = A_STRING_VIEW_LITERAL("/");
+    const AStringView dots2 = A_STRING_VIEW_LITERAL("..");
+    const AStringView dots1 = A_STRING_VIEW_LITERAL(".");
     const char *start = s->Buffer, *next, *end = s->Buffer + s->Length;
     AStringView path_part;
     size_t component_start, new_length;
@@ -249,11 +241,11 @@ int NormalizeAPath(const AStringView *s, AString *result) {
         for (next = start + 1; next != end && (*next != '\\' && *next != '/'); ++next)
             ;
 
-        AStringViewInit2(&path_part, start, next - start);
+        path_part = AStringViewFromBuffer(start, next - start);
 
         if (AStringViewEqual2(&path_part, &dots2)) {
             if (!result->Length || result->Buffer[result->Length - 1] != '/') {
-                LogE(
+                LOG_E(
                     "Path normalization with .. but no preceding relative "
                     "directory\n");
                 return -1;
@@ -299,12 +291,12 @@ int AStringAppendFormat(AString *string, const char *format, ...) {
     grown = vsnprintf(NULL, 0, format, ap);
     va_end(ap);
     if(grown < 0) {
-        LogE("AStringAppendFormat failed\n");
+        LOG_E("AStringAppendFormat failed\n");
         return  -1;
     }
 
     if ((size_t)grown > SIZE_MAX - old_length) {
-        LogE("AStringAppendFormat result is too large\n");
+        LOG_E("AStringAppendFormat result is too large\n");
         return -1;
     }
     new_length = old_length + (size_t)grown;
@@ -322,11 +314,11 @@ int AStringAppendFormat(AString *string, const char *format, ...) {
 #pragma region[ ByteBuffer ]
 
 int ByteBufferResize(ByteBuffer *buffer, size_t size) {
-    return DynamicArrayResizeTyped(buffer, uint8_t, size, 0, "ByteBuffer");
+    return DYNAMIC_ARRAY_RESIZE_TYPED(buffer, uint8_t, size, 0, "ByteBuffer");
 }
 
 int ByteBufferWrite(ByteBuffer *buffer, const void *data, size_t size) {
-    return DynamicArrayAppendTyped(buffer, uint8_t, data, size, "ByteBuffer");
+    return DYNAMIC_ARRAY_APPEND_TYPED(buffer, uint8_t, data, size, "ByteBuffer");
 }
 
 void ByteBufferGetAStringView(const ByteBuffer *buffer, AStringView *s) {
@@ -366,16 +358,16 @@ int ByteBufferCatAStringViews(ByteBuffer *buffer, size_t n, ...) {
 }
 
 void ByteBufferDeinit(ByteBuffer *buffer) {
-    DynamicArrayDeinitTyped(buffer);
+    DYNAMIC_ARRAY_DEINIT_TYPED(buffer);
 }
 
 int ByteBufferEraseRange(ByteBuffer *buffer, size_t start, size_t end) {
     if (start > end || end > buffer->Size) {
-        LogW("Erase byte buffer range out of range\n");
+        LOG_W("Erase byte buffer range out of range\n");
         return -1;
     }
 
-    return DynamicArrayEraseTyped(buffer, uint8_t, start, end);
+    return DYNAMIC_ARRAY_ERASE_TYPED(buffer, uint8_t, start, end);
 }
 
 #pragma endregion[ByteBuffer]
@@ -451,7 +443,7 @@ static int Utf8ToWide(const char *text, WideBuffer *wide, const char *context) {
         ReportError("convert UTF-8", context, error);
         return -1;
     }
-    if (DynamicArrayResizeTyped(wide, WCHAR, (size_t)count, 0, "UTF-16 buffer"))
+    if (DYNAMIC_ARRAY_RESIZE_TYPED(wide, WCHAR, (size_t)count, 0, "UTF-16 buffer"))
         return -1;
     if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide->Buffer,
                              count)) {
@@ -464,7 +456,7 @@ static int Utf8ToWide(const char *text, WideBuffer *wide, const char *context) {
 
 static int WideBufferAppend(WideBuffer *text, const WCHAR *value, size_t count) {
     size_t new_size = text->Size + count;
-    if (DynamicArrayResizeTyped(text, WCHAR, new_size, 1, "compiler command line"))
+    if (DYNAMIC_ARRAY_RESIZE_TYPED(text, WCHAR, new_size, 1, "compiler command line"))
         return -1;
     memcpy(text->Buffer + new_size - count, value, count * sizeof(WCHAR));
     text->Buffer[new_size] = 0;
@@ -512,11 +504,11 @@ static int WideBufferAppendQuoted(WideBuffer *line, const char *argument) {
         goto allocation_failure;
     if (WideBufferAppend(line, &quote, 1))
         goto allocation_failure;
-    DynamicArrayDeinitTyped(&wide);
+    DYNAMIC_ARRAY_DEINIT_TYPED(&wide);
     return 0;
 allocation_failure:
-    LogE("compiler command line size overflow or allocation failed\n");
-    DynamicArrayDeinitTyped(&wide);
+    LOG_E("compiler command line size overflow or allocation failed\n");
+    DYNAMIC_ARRAY_DEINIT_TYPED(&wide);
     return -1;
 }
 
@@ -761,7 +753,7 @@ cleanup:
         error = GetLastError();
         ReportError("close compiler pipe writer", NULL, error);
     }
-    DynamicArrayDeinitTyped(&command);
+    DYNAMIC_ARRAY_DEINIT_TYPED(&command);
     return result;
 }
 
@@ -823,7 +815,7 @@ int FileReadAll(const char *path, ByteBuffer *content) {
         goto cleanup;
     }
     if (length.QuadPart < 0 || (ULONGLONG)length.QuadPart > SIZE_MAX) {
-        LogE("ShaderTool: header '%s' is too large for this platform\n", path);
+        LOG_E("ShaderTool: header '%s' is too large for this platform\n", path);
         goto cleanup;
     }
     if (ByteBufferResize(content, (size_t)length.QuadPart + 1))
@@ -834,7 +826,7 @@ int FileReadAll(const char *path, ByteBuffer *content) {
     content->Buffer[content->Size] = 0;
     result = 0;
 cleanup:
-    DynamicArrayDeinitTyped(&wide);
+    DYNAMIC_ARRAY_DEINIT_TYPED(&wide);
     if (file != INVALID_HANDLE_VALUE && !CloseHandle(file)) {
         error = GetLastError();
         ReportError("close header", path, error);
@@ -863,7 +855,7 @@ int FileWriteAll(const char *path, const void *bytes, size_t size,
         goto cleanup;
     result = 0;
 cleanup:
-    DynamicArrayDeinitTyped(&wide);
+    DYNAMIC_ARRAY_DEINIT_TYPED(&wide);
     if (file != INVALID_HANDLE_VALUE && !CloseHandle(file)) {
         error = GetLastError();
         ReportError("close header", path, error);
@@ -929,7 +921,7 @@ int FileWriteIfChanged(const char *path, const void *bytes,
     result = 0;
 cleanup:
     ByteBufferDeinit(&old);
-    DynamicArrayDeinitTyped(&wide);
+    DYNAMIC_ARRAY_DEINIT_TYPED(&wide);
     if (file != INVALID_HANDLE_VALUE && !CloseHandle(file)) {
         error = GetLastError();
         ReportError("close depfile", path, error);
