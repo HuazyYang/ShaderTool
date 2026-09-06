@@ -505,6 +505,8 @@ static const BackendSpec BackendSpecs[] = {
 #undef OPTION
 #undef OPTION_FOR_BACKENDS
 
+#define countof(A) sizeof(A) / sizeof(A[0])
+
 const BackendSpec *FindBackendSpec(const char *name) {
     size_t i;
     for (i = 0; i < sizeof(BackendSpecs) / sizeof(BackendSpecs[0]); ++i)
@@ -526,73 +528,9 @@ static bool OptionSpecSupportsBackends(const OptionSpec *group, const OptionSpec
     return (target_backends & ((group->Classification & spec->Classification) >> 8)) != 0;
 }
 
-static bool ValidateOptionSpecs(void) {
-    static int validation_state;
-    bool have_group = false;
-    bool group_has_option = false;
-    size_t i;
-    if (validation_state)
-        return validation_state > 0;
-    validation_state = -1;
-    for (i = 0; i < sizeof(OptionSpecs) / sizeof(OptionSpecs[0]); ++i) {
-        const OptionSpec *spec = &OptionSpecs[i];
-        if (spec->Classification & OPTION_RESERVED_MASK)
-            goto invalid;
-        if (OptionSpecIsGroup(spec)) {
-            if (have_group && !group_has_option)
-                goto invalid;
-            if (!OptionBackendMask(spec) || (OptionBackendMask(spec) & ~BackendAll) ||
-                spec->Name || spec->NumValues || spec->ValueName || !spec->Description)
-                goto invalid;
-            have_group = true;
-            group_has_option = false;
-        } else if (!OptionBackendMask(spec) || !spec->Name || !spec->Description) {
-            goto invalid;
-        } else {
-            if (!have_group)
-                goto invalid;
-            group_has_option = true;
-        }
-    }
-    if (!group_has_option)
-        goto invalid;
-    validation_state = 1;
-    return true;
-invalid:
-    LOG_E("invalid OptionSpecs entry at index %zu\n", i);
-    return false;
-}
-
-static bool OptionNameMatches(const OptionSpec *spec, const char *option) {
-    size_t length;
-    length = strlen(spec->Name);
-    if (length && spec->Name[length - 1] == '=')
-        return !strncmp(option, spec->Name, length);
-    return !strcmp(option, spec->Name);
-}
-
 static bool OptionIsIgnoredDependencyControl(const OptionSpec *spec) {
     return !strcmp(spec->Name, "-M") || !strcmp(spec->Name, "-MD") ||
            !strcmp(spec->Name, "-MF") || !strcmp(spec->Name, "-Vi");
-}
-
-const OptionSpec *FindOptionSpec(const BackendSpec *backend, const char *option) {
-    const size_t count = sizeof(OptionSpecs) / sizeof(OptionSpecs[0]);
-    const uint32_t target_backends = backend->Backend;
-    size_t i = 0;
-    if (!ValidateOptionSpecs())
-        return NULL;
-    while (i < count) {
-        const OptionSpec *group = &OptionSpecs[i++];
-        while (i < count && !OptionSpecIsGroup(&OptionSpecs[i])) {
-            const OptionSpec *spec = &OptionSpecs[i];
-            if (OptionSpecSupportsBackends(group, spec, target_backends) &&
-                OptionNameMatches(spec, option))
-                return spec;
-            ++i;
-        }
-    }
-    return NULL;
 }
 
 static void PrintBackends(void) {
@@ -610,8 +548,6 @@ void Usage(const char *prog, const BackendSpec *backend) {
          prog ? prog : "ShaderTool");
     PrintBackends();
     if (!backend)
-        return;
-    if (!ValidateOptionSpecs())
         return;
     while (i < count) {
         const OptionSpec *group = &OptionSpecs[i++];
@@ -685,7 +621,9 @@ static enum OptionFetchResult OptionContextFetch(OptionContext *context,
                                                  ParsedOption *option) {
     const OptionSpec *spec;
     const char *argument;
-    size_t j;
+    size_t i, j;
+    const size_t count = countof(OptionSpecs);
+
     if (context->Index >= (size_t)context->Argc)
         return OptionFetchEnd;
     argument = context->Argv[context->Index++];
@@ -693,19 +631,63 @@ static enum OptionFetchResult OptionContextFetch(OptionContext *context,
     option->Spelling = AStringViewFromCString(argument);
     if (argument[0] != '-')
         return OptionFetchOperand;
-    spec = FindOptionSpec(context->Backend, argument);
-    if (!spec) {
-        LOG_E("unknown or non-compilation option '%s'\n", argument);
-        return OptionFetchError;
+
+    for(i = 0; i < count;) {
+        const OptionSpec *group = &OptionSpecs[i++];
+        while(i < count && !OptionSpecIsGroup(&OptionSpecs[i])) {
+            const OptionSpec *spec = &OptionSpecs[i++];
+            if(OptionSpecSupportsBackends(group, spec, context->Backend->Backend)) {
+                if(spec->NumValues != 1) {
+                    if(strcmp(spec->Name, argument) != 0)
+                        continue;
+
+                    if(spec->NumValues > (size_t)context->Argc - context->Index) {
+                        LOG_E("option '%s' requires %u value(s)\n", argument,
+                              spec->NumValues);
+                        return OptionFetchError;
+                    }
+                    option->Spec = spec;
+                    for (j = 0; j < spec->NumValues; ++j)
+                        option->Values[j] =
+                            AStringViewFromCString(context->Argv[context->Index++]);
+                    return OptionFetchOption;
+                } else {
+                    /* Only one value */
+                    size_t spec_len = strlen(spec->Name);
+                    if(spec_len > 0 && spec->Name[spec_len - 1] == '=') {
+                        if(strncmp(spec->Name, argument, spec_len) != 0)
+                            continue;
+
+                        if(argument[spec_len] == 0) {
+                            LOG_E("option '%s' requires a value");
+                            return OptionFetchError;
+                        }
+                        option->Spec = spec;
+                        option->Values[0] = AStringViewFromCString(&argument[spec_len]);
+                    } else {
+                        if (strncmp(spec->Name, argument, spec_len) != 0)
+                            continue;
+
+                        if (argument[spec_len] == 0) {
+                            if((size_t)context->Argc - context->Index == 0) {
+                                LOG_E("option '%s' requires a value");
+                                return OptionFetchError;
+                            }
+                            option->Spec = spec;
+                            option->Values[0] = AStringViewFromCString(context->Argv[context->Index++]);
+                        } else {
+                            option->Spec = spec;
+                            option->Values[0] = AStringViewFromCString(&argument[spec_len]);
+                        }
+                        return OptionFetchOption;
+                    }
+                }
+            }
+        }
     }
-    if (spec->NumValues > (size_t)context->Argc - context->Index) {
-        LOG_E("option '%s' requires %u value(s)\n", argument, spec->NumValues);
-        return OptionFetchError;
-    }
-    option->Spec = spec;
-    for (j = 0; j < spec->NumValues; ++j)
-        option->Values[j] = AStringViewFromCString(context->Argv[context->Index++]);
-    return OptionFetchOption;
+
+    LOG_E("unknown or non-compilation option '%s'\n", argument);
+    return OptionFetchError;
 }
 
 int ParseCommandLine(int argc, const char **argv, Args *args) {
@@ -934,7 +916,7 @@ static int ComposeCompilerCommand(const Args *args, CompilerCommand *command) {
         argument_count += 1 + parsed->Spec->NumValues; /* option [values] */
         if (args->Backend == BackendFxc) {
             rewrite_name = FxcRewriteName(parsed->Spec);
-            option_size = rewrite_name ? strlen(rewrite_name) : parsed->Spelling.Length;
+            option_size = rewrite_name ? strlen(rewrite_name) : strlen(parsed->Spec->Name);
             rewrite_size += option_size + 1;
         }
     }
@@ -968,8 +950,8 @@ static int ComposeCompilerCommand(const Args *args, CompilerCommand *command) {
                 option_size = strlen(rewrite_name);
                 memcpy(rewritten, rewrite_name, option_size + 1);
             } else {
-                option_size = parsed->Spelling.Length;
-                memcpy(rewritten, parsed->Spelling.Buffer, option_size);
+                option_size = strlen(parsed->Spec->Name);
+                memcpy(rewritten, parsed->Spec->Name, option_size);
                 rewritten[option_size] = 0;
                 if (option_size && rewritten[0] == '-')
                     rewritten[0] = '/';
@@ -977,7 +959,7 @@ static int ComposeCompilerCommand(const Args *args, CompilerCommand *command) {
             command->Arguments[argument_index++] = rewritten;
             rewrite_offset += option_size + 1;
         } else {
-            command->Arguments[argument_index++] = (char *)parsed->Spelling.Buffer;
+            command->Arguments[argument_index++] = (char *)parsed->Spec->Name;
         }
         for (j = 0; j < parsed->Spec->NumValues; ++j)
             command->Arguments[argument_index++] = (char *)parsed->Values[j].Buffer;
