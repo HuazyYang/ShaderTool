@@ -1,0 +1,157 @@
+include_guard(GLOBAL)
+
+# ShaderTool deliberately supports only three execution models:
+# native Windows, native Unix, and an x64 Windows target built on Unix with
+# clang-cl/lld-link. In the latter case CMAKE_CROSSCOMPILING_EMULATOR must be
+# Wine. Other cross configurations are outside this tool's supported surface.
+if(CMAKE_CROSSCOMPILING)
+    if(NOT WIN32 OR NOT CMAKE_HOST_UNIX OR
+       NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64|X86_64)$")
+        message(FATAL_ERROR
+            "ShaderTool supports cross compilation only from Unix to x64 Windows")
+    endif()
+    if(NOT CMAKE_C_COMPILER_ID STREQUAL "Clang" OR
+       NOT CMAKE_C_SIMULATE_ID STREQUAL "MSVC")
+        message(FATAL_ERROR
+            "ShaderTool's Unix-to-Windows build requires a clang-cl MSVC-ABI toolchain")
+    endif()
+    if(NOT CMAKE_CROSSCOMPILING_EMULATOR)
+        message(FATAL_ERROR
+            "ShaderTool's Unix-to-Windows build requires CMAKE_CROSSCOMPILING_EMULATOR=wine")
+    endif()
+    list(GET CMAKE_CROSSCOMPILING_EMULATOR 0 _shadertool_emulator)
+    get_filename_component(_shadertool_emulator_name "${_shadertool_emulator}" NAME_WE)
+    if(NOT _shadertool_emulator_name STREQUAL "wine")
+        message(FATAL_ERROR
+            "ShaderTool supports Wine as its only cross-compiling emulator")
+    endif()
+    unset(_shadertool_emulator)
+    unset(_shadertool_emulator_name)
+endif()
+
+# These cache entries make ShaderTool self-contained: callers may point to a
+# standalone DXC install, a Vulkan SDK, or a Windows SDK without host modules.
+set(SHADERTOOL_FXC_EXECUTABLE "" CACHE FILEPATH "Path to fxc.exe")
+set(SHADERTOOL_DXC_EXECUTABLE "" CACHE FILEPATH "Path to dxc or dxc.exe")
+set(SHADERTOOL_WINDOWS_SDK_ROOT "" CACHE PATH "Windows SDK root containing fxc.exe")
+set(SHADERTOOL_DXC_ROOT "" CACHE PATH "DXC installation root")
+function(_shadertool_make_compiler_path host_path output)
+    if(CMAKE_CROSSCOMPILING)
+        if(NOT WINEPREFIX)
+            message(FATAL_ERROR "WINEPREFIX is required for the Wine cross toolchain")
+        endif()
+        file(RELATIVE_PATH relative_path "${WINEPREFIX}/drive_c" "${host_path}")
+        if(relative_path MATCHES "^\\.\\.")
+            message(FATAL_ERROR "Shader compiler is outside the Wine C: drive: ${host_path}")
+        endif()
+        set(${output} "C:/${relative_path}" PARENT_SCOPE)
+    else()
+        set(${output} "${host_path}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+function(_shadertool_find_fxc output quiet)
+    if(NOT WIN32)
+        if(NOT quiet)
+            message(FATAL_ERROR "FXC is available only for Windows-target builds")
+        endif()
+        return()
+    endif()
+    set(candidate "${SHADERTOOL_FXC_EXECUTABLE}")
+    if(NOT candidate)
+        set(sdk_roots "${SHADERTOOL_WINDOWS_SDK_ROOT}" "${WindowsSDK_ROOT}"
+            "$ENV{WindowsSDK_ROOT}" "$ENV{WindowsSdkDir}")
+        if(CMAKE_HOST_WIN32)
+            get_filename_component(registry_sdk_root
+                "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots;KitsRoot10]" ABSOLUTE)
+            list(APPEND sdk_roots "${registry_sdk_root}")
+        endif()
+        if(CMAKE_CROSSCOMPILING)
+            list(APPEND sdk_roots "${WINEPREFIX}/drive_c/Program Files (x86)/Windows Kits/10")
+        endif()
+        foreach(sdk_root IN LISTS sdk_roots)
+            if(WindowsSDK_VERSION)
+                set(versions "${sdk_root}/bin/${WindowsSDK_VERSION}")
+            else()
+                file(GLOB versions LIST_DIRECTORIES TRUE "${sdk_root}/bin/10.*")
+            endif()
+            list(SORT versions COMPARE NATURAL ORDER DESCENDING)
+            foreach(version_dir IN LISTS versions)
+                # Match the Windows SDK layout used by FindWindowsSDK.cmake:
+                # its selected version owns both Include/<version> and bin/<version>/x64.
+                get_filename_component(version_name "${version_dir}" NAME)
+                if(EXISTS "${sdk_root}/Include/${version_name}/um" AND
+                   EXISTS "${version_dir}/x64/fxc.exe")
+                    set(candidate "${version_dir}/x64/fxc.exe")
+                    break()
+                endif()
+            endforeach()
+            if(candidate)
+                break()
+            endif()
+        endforeach()
+        if(NOT candidate)
+            unset(candidate CACHE)
+            find_program(candidate NAMES fxc fxc.exe NO_CMAKE_FIND_ROOT_PATH)
+        endif()
+    endif()
+    if(candidate)
+        set(SHADERTOOL_FXC_HOST_EXECUTABLE "${candidate}" CACHE FILEPATH
+            "Native path to fxc.exe" FORCE)
+        _shadertool_make_compiler_path("${candidate}" compiler)
+        set(${output} "${compiler}" PARENT_SCOPE)
+    elseif(NOT quiet)
+        message(FATAL_ERROR "FXC was not found; set SHADERTOOL_FXC_EXECUTABLE or SHADERTOOL_WINDOWS_SDK_ROOT")
+    endif()
+endfunction()
+
+function(_shadertool_find_dxc output quiet)
+    set(candidate "${SHADERTOOL_DXC_EXECUTABLE}")
+    if(NOT candidate)
+        set(roots "${SHADERTOOL_DXC_ROOT}" "${DXC_ROOT}" "${VULKAN_SDK}"
+            "$ENV{DXC_ROOT}" "$ENV{VULKAN_SDK}" "$ENV{VK_SDK_PATH}")
+        if(CMAKE_CROSSCOMPILING)
+            list(APPEND roots
+                "${WINEPREFIX}/drive_c/Program Files/DirectXShaderCompiler"
+                "${WINEPREFIX}/drive_c/Program Files (x86)/Windows Kits/10")
+        endif()
+        foreach(root IN LISTS roots)
+            unset(candidate CACHE)
+            unset(candidate)
+            find_program(candidate NAMES dxc dxc.exe PATHS "${root}"
+                PATH_SUFFIXES bin Bin bin/x64 Bin/x64 bin/x86_64 Bin/x86_64
+                    Redist/D3D/x64
+                NO_DEFAULT_PATH)
+            if(candidate)
+                break()
+            endif()
+        endforeach()
+        if(NOT candidate)
+            unset(candidate CACHE)
+            unset(candidate)
+            find_program(candidate NAMES dxc dxc.exe NO_CMAKE_FIND_ROOT_PATH)
+        endif()
+    endif()
+    if(candidate)
+        set(SHADERTOOL_DXC_HOST_EXECUTABLE "${candidate}" CACHE FILEPATH
+            "Native path to dxc" FORCE)
+        _shadertool_make_compiler_path("${candidate}" compiler)
+        set(${output} "${compiler}" PARENT_SCOPE)
+    elseif(NOT quiet)
+        message(FATAL_ERROR "DXC was not found; set SHADERTOOL_DXC_EXECUTABLE or SHADERTOOL_DXC_ROOT")
+    endif()
+endfunction()
+
+function(shadertool_find_compiler backend output_variable)
+    set(options QUIET)
+    cmake_parse_arguments(arguments "${options}" "" "" ${ARGN})
+    string(TOUPPER "${backend}" backend)
+    if(backend STREQUAL FXC)
+        _shadertool_find_fxc(compiler "${arguments_QUIET}")
+    elseif(backend STREQUAL DXC OR backend STREQUAL SPIRV)
+        _shadertool_find_dxc(compiler "${arguments_QUIET}")
+    else()
+        message(FATAL_ERROR "unknown shader compiler backend: ${backend}")
+    endif()
+    set(${output_variable} "${compiler}" PARENT_SCOPE)
+endfunction()

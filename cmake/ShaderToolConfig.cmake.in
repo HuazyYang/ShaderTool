@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+if(NOT TARGET ShaderTool::ShaderTool)
+    include("${CMAKE_CURRENT_LIST_DIR}/ShaderToolTargets.cmake")
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/ShaderToolFunctions.cmake")
+
+check_required_components(ShaderTool)

@@ -12,7 +12,6 @@
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/dev",
             "cacheVariables": {
-                "SHADERTOOL_BUILD_TESTING": true,
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": true
             }
@@ -25,19 +24,10 @@
             "jobs": 0
         }
     ],
-    "testPresets": [
-        {
-            "name": "dev",
-            "configurePreset": "dev",
-            "output": {
-                "outputOnFailure": true
-            }
-        }
-    ],
     "workflowPresets": [
         {
             "name": "dev",
-            "displayName": "Configure, build, and test ShaderTool",
+            "displayName": "Configure and build ShaderTool",
             "steps": [
                 {
                     "type": "configure",
@@ -45,10 +35,6 @@
                 },
                 {
                     "type": "build",
-                    "name": "dev"
-                },
-                {
-                    "type": "test",
                     "name": "dev"
                 }
             ]

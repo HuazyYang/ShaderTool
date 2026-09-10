@@ -3,6 +3,8 @@ include_guard(GLOBAL)
 cmake_policy(PUSH)
 cmake_policy(SET CMP0121 NEW)
 
+include("${CMAKE_CURRENT_LIST_DIR}/ShaderToolCompilerDiscovery.cmake")
+
 function(_shadertool_validate_shader_profile backend profile)
     if(NOT profile MATCHES "^[0-9]+_[0-9]+$")
         message(FATAL_ERROR "invalid ${backend} shader profile suffix: ${profile}")
@@ -17,23 +19,7 @@ function(_shadertool_validate_shader_profile backend profile)
 endfunction()
 
 function(_shadertool_resolve_shader_compiler backend output_variable)
-    unset(compiler)
-    if(backend STREQUAL FXC)
-        if(NOT WIN32)
-            message(FATAL_ERROR "FXC shader backend is unsupported on native Unix; use the Win32 ShaderTool through the Wine toolchain")
-        endif()
-        if(NOT FXC_EXECUTABLE)
-            find_program(compiler "fxc" REQUIRED)
-        else()
-            set(compiler "${FXC_EXECUTABLE}")
-        endif()
-    else()
-        if(NOT DXC_EXECUTABLE)
-            find_program(compiler "dxc" REQUIRED)
-        else()
-            set(compiler "${DXC_EXECUTABLE}")
-        endif()
-    endif()
+    shadertool_find_compiler("${backend}" compiler)
     set(${output_variable} "${compiler}" PARENT_SCOPE)
 endfunction()
 
@@ -205,7 +191,7 @@ function(_shadertool_generate_shader_objects output_variable source_variable hea
         list(APPEND command_line ${output_flag} "${output_path}")
         list(APPEND command_line -depfile "${dep_path}" "${entry_file_path}")
 
-        if(ShaderTool_WINDOWS_WINE_CROSS)
+        if(CMAKE_CROSSCOMPILING)
             set(wine_command_line)
             foreach(argument IN LISTS command_line)
                 if(argument MATCHES "^/")
@@ -221,16 +207,21 @@ function(_shadertool_generate_shader_objects output_variable source_variable hea
         if(EXISTS "${shadertool_COMPILER}")
             set(compiler_dependency "${shadertool_COMPILER}")
         endif()
+        set(tool_command "$<TARGET_FILE:ShaderTool::ShaderTool>")
+        if(CMAKE_CROSSCOMPILING)
+            list(PREPEND tool_command ${CMAKE_CROSSCOMPILING_EMULATOR})
+        endif()
         add_custom_command(
             OUTPUT "${output_path}"
             BYPRODUCTS "${dep_path}"
             COMMAND "${CMAKE_COMMAND}" -E make_directory "${output_dir}" "${dep_dir}"
-            COMMAND ShaderTool "${backend_name}" -compiler "${shadertool_COMPILER}"
+            COMMAND ${tool_command} "${backend_name}" -compiler "${shadertool_COMPILER}"
                 ${command_line}
             WORKING_DIRECTORY "${entry_file_dir}"
-            DEPENDS "${entry_file_path}" ${compiler_dependency} ShaderTool
+            DEPENDS "${entry_file_path}" ${compiler_dependency} ShaderTool::ShaderTool
             DEPFILE "${dep_path}"
-            COMMAND_EXPAND_LISTS VERBATIM)
+            COMMAND_EXPAND_LISTS VERBATIM
+            )
         list(APPEND output_files "${output_path}")
         list(APPEND entry_files "${entry_file_path}")
     endforeach()
@@ -316,7 +307,7 @@ function(shadertool_add_shader_objects)
     endforeach()
     list(REMOVE_DUPLICATES all_sources)
     add_custom_target("${shadertool_TARGET}" DEPENDS ${all_outputs} SOURCES ${all_sources})
-    add_dependencies("${shadertool_TARGET}" ShaderTool)
+    add_dependencies("${shadertool_TARGET}" ShaderTool::ShaderTool)
     if(header_directories)
         set_property(TARGET "${shadertool_TARGET}" PROPERTY
             OBJECT_HEADER_OUTPUT_DIR "${header_directories}")
