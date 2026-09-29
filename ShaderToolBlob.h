@@ -12,8 +12,8 @@
  *         char     key[permutationSize];           (no NUL)
  *         uint8_t  data[dataSize];
  *
- * There is no count field and no terminator; readers stop when fewer than
- * 8 bytes remain or when an entry's dataSize is 0. Both header fields are
+ * There is no count field and no terminator; readers stop when 8 or fewer
+ * bytes remain or when an entry's dataSize is 0. Both header fields are
  * written and read as explicit little-endian byte sequences regardless of
  * host endianness.
  *
@@ -84,6 +84,8 @@ int ShaderToolBlobEnumeratePermutations(const void *blob, size_t size,
  * key as "NAME=VALUE;" pairs (or "<default>" when count==0), then the list
  * of permutations available in the blob, one key per line.
  * Two-call sizing like ShaderToolBlobBuildKey (size excludes the NUL).
+ * On a capacity failure the buffer contents are unspecified (it may have
+ * been partially overwritten, without a terminating NUL).
  */
 int ShaderToolBlobFormatNotFoundMessage(const void *blob, size_t size,
     const ShaderToolBlobConstant *constants, size_t count,

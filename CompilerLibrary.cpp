@@ -313,23 +313,32 @@ int CompileWithDxc(const CompileVariantRequest &request, CompileVariantResult &r
     if (ReadFileBytes(request.Source, source, result.Diagnostics))
         return -1;
 
-    ComPtr<IDxcUtils> utils;
-    HRESULT code = DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(utils.GetAddressOf()));
-    if (FAILED(code)) {
-        AppendHresultError(result.Diagnostics, "create IDxcUtils", code);
-        return -1;
+    /* The dxc interfaces are stateless across Compile calls; create them once per
+       process instead of once per variant (mirrors the cached slang session). */
+    static ComPtr<IDxcUtils> utils;
+    static ComPtr<IDxcCompiler3> compiler;
+    static ComPtr<IDxcIncludeHandler> default_handler;
+    HRESULT code = S_OK;
+    if (!utils) {
+        code = DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(utils.GetAddressOf()));
+        if (FAILED(code)) {
+            AppendHresultError(result.Diagnostics, "create IDxcUtils", code);
+            return -1;
+        }
     }
-    ComPtr<IDxcCompiler3> compiler;
-    code = DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(compiler.GetAddressOf()));
-    if (FAILED(code)) {
-        AppendHresultError(result.Diagnostics, "create IDxcCompiler3", code);
-        return -1;
+    if (!compiler) {
+        code = DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(compiler.GetAddressOf()));
+        if (FAILED(code)) {
+            AppendHresultError(result.Diagnostics, "create IDxcCompiler3", code);
+            return -1;
+        }
     }
-    ComPtr<IDxcIncludeHandler> default_handler;
-    code = utils->CreateDefaultIncludeHandler(default_handler.GetAddressOf());
-    if (FAILED(code) || !default_handler) {
-        AppendHresultError(result.Diagnostics, "create dxc include handler", code);
-        return -1;
+    if (!default_handler) {
+        code = utils->CreateDefaultIncludeHandler(default_handler.GetAddressOf());
+        if (FAILED(code) || !default_handler) {
+            AppendHresultError(result.Diagnostics, "create dxc include handler", code);
+            return -1;
+        }
     }
     DxcIncludeRecorder include_recorder(default_handler.Get(), result.Includes);
 

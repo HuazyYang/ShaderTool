@@ -377,8 +377,10 @@ function(shadertool_add_shader_objects)
                 OUTPUT "${output_path}"
                 COMMAND "${CMAKE_COMMAND}" -E make_directory
                     "${output_dir}" "${depfile_dir}"
+                # Function-level flags come first so a per-row option (e.g. -O1)
+                # overrides them, matching ShaderMake's row-over-global precedence.
                 COMMAND "$<TARGET_FILE:ShaderTool::ShaderTool>" "${backend_cli}"
-                    ${row_args} ${backend_flags} ${output_flags}
+                    ${backend_flags} ${row_args} ${output_flags}
                     -depfile "${depfile_path}" "${source_rel}"
                 WORKING_DIRECTORY "${config_dir}"
                 DEPENDS ShaderTool::ShaderTool "${source_abs}"
