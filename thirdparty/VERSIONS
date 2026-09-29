@@ -1,0 +1,63 @@
+ShaderTool vendored dependency packages
+=======================================
+All packages are gzip'd tar archives extracted by cmake/ShaderToolDependencies.cmake
+into ${CMAKE_BINARY_DIR}/_deps at configure time.
+
+dxc-win-x64.tgz
+  Upstream : microsoft/DirectXShaderCompiler release v1.9.2602 (dxcompiler 1.9.0.5399)
+  Source   : https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602/dxc_2026_02_20.zip
+  Layout   : bin/x64/dxcompiler.dll
+             bin/x64/dxil.dll
+             lib/x64/dxcompiler.lib
+             inc/dxcapi.h  inc/dxcerrors.h  inc/dxcisense.h  inc/d3d12shader.h
+             LICENSE-LLVM.txt  LICENSE-MIT.txt  LICENSE-MS.txt
+  Notes    : d3d12shader.h includes d3dcommon.h, which comes from the Windows SDK.
+
+dxc-linux-x64.tgz
+  Upstream : microsoft/DirectXShaderCompiler release v1.9.2602
+  Source   : https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602/linux_dxc_2026_02_20.x86_64.tar.gz
+  Layout   : lib/libdxcompiler.so                 (ELF SONAME: libdxcompiler.so)
+             include/dxc/dxcapi.h  dxcerrors.h  dxcisense.h  WinAdapter.h
+             include/dxc/Support/ErrorCodes.h
+             LICENSE-LLVM.txt  LICENSE-MS.txt
+  Notes    : libdxil.so (DXIL signing) deliberately not vendored (contract lists
+             libdxcompiler.so only).
+
+slang-win-x64.tgz
+  Upstream : shader-slang/slang release 2026.10.2
+  Source   : https://github.com/shader-slang/slang/releases/download/v2026.10.2/slang-2026.10.2-windows-x86_64.zip
+  Layout   : bin/slang.dll                        (API shim; LoadLibrary's slang-compiler.dll)
+             bin/slang-compiler.dll               (the actual compiler; must sit next to slang.dll)
+             bin/slang-standard-module-2026.10.2/slang/*.slang  (importable stdlib modules,
+                                                   searched relative to the DLL)
+             lib/slang.lib                        (import library for slang.dll)
+             include/slang.h  slang-com-helper.h  slang-com-ptr.h  slang-deprecated.h
+             include/slang-image-format-defs.h  slang-tag-version.h
+             LICENSE
+  Notes    : slangc/slangd/slangi executables, gfx, slang-rt, slang-llvm and
+             slang-glslang deliberately excluded (in-process HLSL compilation only;
+             slang emits SPIR-V directly, glslang pass-through is unsupported).
+
+slang-linux-x64.tgz
+  Upstream : shader-slang/slang release 2026.10.2
+  Source   : https://github.com/shader-slang/slang/releases/download/v2026.10.2/slang-2026.10.2-linux-x86_64.tar.gz
+  Layout   : lib/libslang-compiler.so.0.2026.10.2 (real file; ELF SONAME: libslang-compiler.so.0.2026.10.2)
+             lib/libslang.so            -> libslang-compiler.so.0.2026.10.2  (symlink)
+             lib/libslang-compiler.so.0 -> libslang-compiler.so.0.2026.10.2  (symlink)
+             lib/slang-standard-module-2026.10.2/slang/*.slang
+             include/  (same header set as slang-win-x64)
+             LICENSE
+  Notes    : upstream ships no small libslang.so shim on Linux; libslang.so is a
+             symlink to the compiler library (mirrored here). Symlink members are
+             skipped by cmake -E tar on Windows (harmless: the package is Linux-only);
+             link against the SONAME file directly. Archive created with Python
+             tarfile (GNU format) to carry the symlinks; the other four packages were
+             created with cmake -E tar czf.
+
+d3dcompiler-win-x64.tgz
+  Upstream : Windows 10 SDK 10.0.19041.0 (local install, C:\Program Files (x86)\Windows Kits\10)
+  Source   : Redist\D3D\x64, Lib\10.0.19041.0\um\x64, Include\10.0.19041.0\um
+  Layout   : bin/x64/d3dcompiler_47.dll           (from SDK Redist; Microsoft-redistributable)
+             lib/x64/d3dcompiler.lib
+             inc/d3dcompiler.h  inc/d3d11shader.h  inc/d3dcommon.h
+             README.md                            (SDK version + redistribution note)

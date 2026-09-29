@@ -1,8 +1,13 @@
 @PACKAGE_INIT@
 
+# Vendored compiler packages: extracted into the consumer's build tree and
+# exposed as IMPORTED targets; also provides shadertool_copy_runtime_libraries().
+include("${CMAKE_CURRENT_LIST_DIR}/ShaderToolDependencies.cmake")
+
 if(NOT TARGET ShaderTool::ShaderTool)
     include("${CMAKE_CURRENT_LIST_DIR}/ShaderToolTargets.cmake")
 endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/ShaderToolFunctions.cmake")
 
 check_required_components(ShaderTool)
