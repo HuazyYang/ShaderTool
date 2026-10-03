@@ -58,9 +58,11 @@ if(WIN32)
     target_compile_definitions(ShaderTool PRIVATE
         WIN32_LEAN_AND_MEAN UNICODE NOMINMAX)
     # dxcompiler/slang are DLLs with their own CRT, so a static CRT for the
-    # exe is safe and keeps the tool self-contained.
+    # exe is safe and keeps the tool self-contained. The debug CRT in Debug:
+    # a parent project may define _DEBUG there (Donut does), and the STL then
+    # needs the debug CRT's functions (_CrtDbgReport, _malloc_dbg, ...).
     set_target_properties(ShaderTool PROPERTIES
-        MSVC_RUNTIME_LIBRARY "MultiThreaded")
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 shadertool_copy_runtime_libraries(ShaderTool)

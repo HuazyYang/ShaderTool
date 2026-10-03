@@ -118,7 +118,9 @@ const OptionSpec OptionSpecs[] = {
 
     GROUP(MaskAll, "Debug information"),
     {OptionKind::ForwardFlag, MaskAll, "-Zi", 0, nullptr, "enable debug information"},
-    {OptionKind::ForwardFlag, MaskDxcClass, "-Qembed_debug", 0, nullptr,
+    // DXBC and slang embed debug info whenever -Zi is set, so they accept the flag as a no-op
+    // (CompilerLibrary.cpp); EMBED_PDB passes it to every backend (Aftermath builds D3D11 shaders too).
+    {OptionKind::ForwardFlag, MaskAll, "-Qembed_debug", 0, nullptr,
      "embed debug information in the shader"},
     {OptionKind::ForwardFlag, MaskSlangClass, "-g", 0, nullptr,
      "emit debug information (slang)"},
